@@ -136,7 +136,7 @@ cd ~/PhysLog
 git init
 git add .
 git commit -m "feat: PhysLog v1.0"
-gh repo create RyotaBani/PhysLog --public --source=. --push
+gh repo create nakyatsukuruapp/PhysLog --public --source=. --push
 ```
 
 ```
