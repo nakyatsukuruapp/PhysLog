@@ -63,7 +63,7 @@ export function TextImport(props: { onClose: () => void }) {
     ...(b.members.length ? [] : ['人が選ばれていない日があります']),
     ...b.exercises.filter((e) => !e.name.trim()).map(() => '種目名が空の行があります'),
   ]) ?? []
-  const exerciseCount = blocks?.reduce((a, b) => a + (b.exercises.length + b.activities.length + (b.sleep ? 1 : 0)) * b.members.length, 0) ?? 0
+  const exerciseCount = blocks?.reduce((a, b) => a + (b.exercises.length + b.activities.length + (b.sleep ? 1 : 0) + (b.daily ? 1 : 0)) * b.members.length, 0) ?? 0
 
   const save = () => {
     if (!blocks) return
@@ -75,10 +75,14 @@ export function TextImport(props: { onClose: () => void }) {
       for (const name of b.members) {
         const memberId = idByName.get(name)!
         // 睡眠：その日のコンディションに入れる（体調などは残す）
-        if (b.sleep) {
+        if (b.sleep || b.daily) {
           const c = actions.getState().conditions.find((x) => x.date === b.date && (x.memberId ?? 'me') === memberId)
-          actions.saveCondition({ ...(c ?? { id: uid(), memo: '' }), memberId, date: b.date, sleep: b.sleep.hours ?? c?.sleep, bedtime: b.sleep.bedtime ?? c?.bedtime, wake: b.sleep.wake ?? c?.wake })
-          added++
+          actions.saveCondition({
+            ...(c ?? { id: uid(), memo: '' }), memberId, date: b.date,
+            sleep: b.sleep?.hours ?? c?.sleep, bedtime: b.sleep?.bedtime ?? c?.bedtime, wake: b.sleep?.wake ?? c?.wake,
+            steps: b.daily?.steps ?? c?.steps, walkDistance: b.daily?.distance ?? c?.walkDistance,
+          })
+          added += (b.sleep ? 1 : 0) + (b.daily ? 1 : 0)
         }
         // 有酸素：同じ日・同じ種類があれば上書き（ショートカットを2回貼っても増えない）
         for (const a of b.activities) {
@@ -181,6 +185,17 @@ export function TextImport(props: { onClose: () => void }) {
                   <div className="sub">元の行：{b.sleep.raw}</div>
                 </div>
                 <button className="icon-btn" style={{ width: 32, height: 32, fontSize: 13 }} aria-label="外す" onClick={() => patchBlock(b.key, (x) => ({ ...x, sleep: undefined }))}>✕</button>
+              </div>
+            )}
+            {b.daily && (
+              <div className="ex row" style={{ background: 'var(--fill2)', border: '1px solid var(--line)' }}>
+                <span style={{ fontSize: 18 }}>👣</span>
+                <div className="grow">
+                  <b>1日の歩数</b>
+                  <span className="sub" style={{ marginLeft: 8 }}>{[b.daily.steps != null && `${b.daily.steps.toLocaleString()}歩`, b.daily.distance != null && `${b.daily.distance}km`].filter(Boolean).join('・')}</span>
+                  <div className="sub">元の行：{b.daily.raw}</div>
+                </div>
+                <button className="icon-btn" style={{ width: 32, height: 32, fontSize: 13 }} aria-label="外す" onClick={() => patchBlock(b.key, (x) => ({ ...x, daily: undefined }))}>✕</button>
               </div>
             )}
             {b.activities.map((a) => (

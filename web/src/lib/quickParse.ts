@@ -50,6 +50,8 @@ export interface ParsedBlock {
   place?: string
   exercises: ParsedExercise[]
   sleep?: ParsedSleep
+  /** 1日の歩数・歩行距離（「歩数 8234」「歩行距離 5.6km」） */
+  daily?: { steps?: number; distance?: number; raw: string }
   activities: ParsedActivity[]
 }
 
@@ -272,6 +274,14 @@ export function parseQuickText(text: string, opts: { memberNames: string[]; know
     const sl = parseSleepLine(line)
     if (sl) { current().sleep = sl; open = null; continue }
     const ac = parseActivityLine(line)
+    if (ac && /^(歩数|steps?|歩行距離|歩行\+?ランニングの距離|距離)/i.test(line.normalize('NFKC').trim())) {
+      const b = current()
+      b.daily = { ...b.daily, raw: [b.daily?.raw, line].filter(Boolean).join(' / ') }
+      if (ac.steps != null) b.daily.steps = ac.steps
+      if (ac.distance != null) b.daily.distance = ac.distance
+      open = null
+      continue
+    }
     if (ac) {
       const b = current()
       const same = b.activities.find((x) => x.kind === ac.kind)
@@ -388,7 +398,7 @@ export function parseQuickText(text: string, opts: { memberNames: string[]; know
     }
     current().exercises.push({ key: 'e' + k++, raw: line, name: r.name, match: r.match, sets, note })
   }
-  return { blocks: blocks.filter((b) => b.exercises.length || b.sleep || b.activities.length), ignored }
+  return { blocks: blocks.filter((b) => b.exercises.length || b.sleep || b.daily || b.activities.length), ignored }
 }
 
 /** 確認画面でセットを手直しするための、往復できる短い表記 */

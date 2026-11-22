@@ -71,7 +71,13 @@ export function Graph() {
       case 'condition': d.conditions.forEach((c) => put(c.date, c.condition)); break
       case 'walkMin': d.activities.forEach((a) => put(a.date, a.minutes, 'sum')); break
       case 'walkKm': d.activities.forEach((a) => put(a.date, a.distance, 'sum')); break
-      case 'steps': d.activities.forEach((a) => put(a.date, a.steps, 'sum')); break
+      case 'steps': {
+        // 1日の歩数（ヘルスケア）があればそれを、なければウォーキングの歩数
+        const daily = new Set(d.conditions.filter((c) => c.steps != null).map((c) => c.date))
+        d.conditions.forEach((c) => put(c.date, c.steps))
+        d.activities.filter((a) => !daily.has(a.date)).forEach((a) => put(a.date, a.steps, 'sum'))
+        break
+      }
     }
     return [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, value]) => ({ date, value }))
   }, [d, metric, period, aType, ex, liftMode])

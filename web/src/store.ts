@@ -153,6 +153,18 @@ function upsert<C extends Collection>(col: C, item: ItemOf<C>) {
   commit({ ...state, [col]: next })
 }
 
+/** まとめて保存（ヘルスケアの取り込みなど、件数が多いとき用）。memberId は各要素に入れておく */
+function upsertMany<C extends Collection>(col: C, items: ItemOf<C>[]) {
+  if (!items.length) return
+  const list = [...(state[col] as ItemOf<C>[])]
+  for (const it of items) {
+    const i = list.findIndex((x) => x.id === it.id)
+    if (i >= 0) list[i] = it
+    else list.push(it)
+  }
+  commit({ ...state, [col]: list })
+}
+
 function remove(col: Collection, id: string) {
   const list = state[col] as { id: string }[]
   commit({ ...state, [col]: list.filter((x) => x.id !== id) })
@@ -165,6 +177,7 @@ export const actions = {
   saveCondition: (c: ItemOf<'conditions'>) => upsert('conditions', c),
   savePhoto: (p: ItemOf<'photos'>) => upsert('photos', p),
   saveActivity: (a: ItemOf<'activities'>) => upsert('activities', a),
+  upsertMany,
   remove,
   setProfile: (p: AppData['profile']) => commit({ ...state, profile: p }),
 

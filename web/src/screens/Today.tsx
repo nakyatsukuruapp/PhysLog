@@ -156,6 +156,7 @@ export function Today(props: { onEdit: (e: Editing) => void }) {
             <div className="sub" style={{ marginTop: 6, textAlign: 'right' }}>😴 {sleepLabel(cond.sleep)}{cond.bedtime && `（${cond.bedtime}〜${cond.wake}）`}</div>
           )}
           {cond?.fatigue != null && <div className="sub" style={{ marginTop: 8 }}>疲労度 {cond.fatigue}</div>}
+          {cond?.steps != null && <div className="sub" style={{ marginTop: 6, textAlign: 'right' }}>👣 {cond.steps.toLocaleString()}歩{cond.walkDistance != null ? `（${cond.walkDistance}km）` : ''}</div>}
         </div>
 
         {/* 身体測定 */}

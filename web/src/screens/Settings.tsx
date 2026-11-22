@@ -4,6 +4,7 @@ import type { AppData } from '../types'
 import { ConfirmButton, toast } from '../components/ui'
 import { makeSample } from '../lib/sample'
 import { SPORTS, activityMeta } from '../lib/presets'
+import { HealthCard } from '../components/HealthCard'
 import { sessionVolume, todayKey } from '../lib/format'
 
 function download(name: string, text: string, type: string) {
@@ -38,6 +39,8 @@ function toCSV(d: AppData, memberName: string) {
     if (c.sleep != null) push('コンディション', c.date, '睡眠時間', c.sleep, '時間', c.bedtime ? `${c.bedtime}〜${c.wake ?? ''}` : '', c.memo)
     if (c.fatigue != null) push('コンディション', c.date, '疲労度', c.fatigue, '1-5', '', c.memo)
     if (c.condition != null) push('コンディション', c.date, '体調', c.condition, '1-5', '', c.memo)
+    if (c.steps != null) push('コンディション', c.date, '歩数', c.steps, '歩', '', '')
+    if (c.walkDistance != null) push('コンディション', c.date, '歩行距離', c.walkDistance, 'km', '', '')
   }
   for (const a of d.activities ?? []) {
     const label = activityMeta(a.kind).label
@@ -99,8 +102,10 @@ export function Settings(props: { onOpenMenu: () => void }) {
       </div>
 
       <button className="btn block mobile-only" style={{ marginBottom: 12, background: 'var(--card)', justifyContent: 'flex-start' }} onClick={props.onOpenMenu}>📋 メニュー提案を開く</button>
+      <HealthCard />
+
       <div className="card">
-        <div className="card-h"><h2>ヘルスケアの睡眠・歩数を取り込む</h2></div>
+        <div className="card-h"><h2>ブラウザ版：ショートカットで取り込む</h2></div>
         <p className="sub" style={{ marginTop: 0, lineHeight: 1.7 }}>
           ブラウザからはヘルスケアを直接読めないため、iPhoneの「ショートカット」アプリでテキストにして貼り付けます。
           毎朝オートメーションで動かすと、コピーされたテキストを「テキストで入力」に貼るだけになります。

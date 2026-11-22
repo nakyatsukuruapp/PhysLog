@@ -55,7 +55,7 @@ export function History(props: { onEdit: (e: Editing) => void }) {
       for (const c of d.conditions)
         rows.push({
           date: c.date, key: c.id, edit: { kind: 'condition', date: c.date, item: c }, icon: '😊', title: 'コンディション',
-          detail: [c.condition && `体調 ${CONDITION_LABELS[c.condition - 1]}`, c.fatigue && `疲労 ${c.fatigue}`, c.sleep != null && `睡眠 ${sleepLabel(c.sleep)}${c.bedtime ? `（${c.bedtime}〜${c.wake}）` : ''}`, c.memo].filter(Boolean).join('・'),
+          detail: [c.condition && `体調 ${CONDITION_LABELS[c.condition - 1]}`, c.fatigue && `疲労 ${c.fatigue}`, c.sleep != null && `睡眠 ${sleepLabel(c.sleep)}${c.bedtime ? `（${c.bedtime}〜${c.wake}）` : ''}`, c.steps != null && `${c.steps.toLocaleString()}歩`, c.memo].filter(Boolean).join('・'),
         })
     const query = q.trim()
     const filtered = query ? rows.filter((r) => (r.title + r.detail).includes(query)) : rows

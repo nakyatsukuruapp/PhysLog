@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { actions, useRawData } from './store'
 import { Today, EditorHost, type Editing } from './screens/Today'
 import { History } from './screens/History'
@@ -7,7 +7,8 @@ import { Insights } from './screens/Insights'
 import { Menu } from './screens/Menu'
 import { Photos } from './screens/Photos'
 import { Settings } from './screens/Settings'
-import { ToastHost } from './components/ui'
+import { ToastHost, toast } from './components/ui'
+import { autoSync } from './lib/health'
 import { TimerMini, TimerPanel } from './components/Timer'
 
 type Tab = 'today' | 'history' | 'graph' | 'photos' | 'insights' | 'menu' | 'settings'
@@ -42,6 +43,15 @@ export function App() {
   const [timerOpen, setTimerOpen] = useState(false)
   const go = (t: Tab) => { setTab(t); history.replaceState(null, '', '#' + t); window.scrollTo(0, 0) }
   const cur = TABS.find((t) => t.id === tab) ?? TABS[0]
+
+  // アプリ版：開いたとき・戻ってきたときにヘルスケアを取り込む（1時間に1回まで）
+  useEffect(() => {
+    const run = () => autoSync(actions.getState()).then((r) => { if (r && (r.days || r.workouts || r.bodies)) toast('ヘルスケアを取り込みました') }).catch(() => {})
+    run()
+    const onVis = () => { if (document.visibilityState === 'visible') run() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [])
 
   return (
     <div className="app">

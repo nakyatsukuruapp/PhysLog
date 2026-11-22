@@ -7,13 +7,21 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:single": "tsc -b && vite build --mode single",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:app": "tsc -b && vite build --mode app && cap sync",
+    "ios": "npm run build:app && cap open ios",
+    "android": "npm run build:app && cap open android"
   },
   "dependencies": {
+    "@capacitor/core": "^8.6.2",
+    "@capgo/capacitor-health": "^8.13.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/cli": "^8.6.2",
+    "@capacitor/ios": "^8.6.2",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.7.0",

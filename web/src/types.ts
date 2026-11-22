@@ -60,6 +60,9 @@ export interface ConditionRecord {
   /** 就寝・起床時刻（"HH:MM"）。ヘルスケアの取り込みなどで入る。任意 */
   bedtime?: string
   wake?: string
+  /** その日の歩数・歩行距離（km）。ヘルスケアの1日の合計 */
+  steps?: number
+  walkDistance?: number
   fatigue?: number // 1 = ほぼなし … 5 = 非常に高い
   condition?: number // 1 = 最高 … 5 = 不調
   memo: string
@@ -79,6 +82,13 @@ export interface BodyPhoto {
   date: string
   pose: PhotoPose
   memo: string
+}
+
+/** ヘルスケア連携の状態（端末ごと。localStorage に保存） */
+export interface HealthSync {
+  connected: boolean
+  memberId?: string
+  lastSync?: string // ISO
 }
 
 export type ActivityKind = 'walk' | 'run' | 'bike'
