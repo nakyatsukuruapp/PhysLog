@@ -3,7 +3,8 @@ import { actions, uid, useRawData } from '../store'
 import type { ExerciseLog } from '../types'
 import { Sheet, toast } from '../components/ui'
 import { EXERCISES } from '../lib/presets'
-import { labelDate, todayKey } from '../lib/format'
+import { activitySummary, labelDate, sleepLabel, todayKey } from '../lib/format'
+import { activityMeta } from '../lib/presets'
 import { parseQuickText, setsToText, textToSets, type ParsedBlock, type ParsedExercise } from '../lib/quickParse'
 
 // 下書きはブラウザに残す。ジムでメモだけ書いて、取り込みは後からでもよいように
@@ -62,7 +63,7 @@ export function TextImport(props: { onClose: () => void }) {
     ...(b.members.length ? [] : ['人が選ばれていない日があります']),
     ...b.exercises.filter((e) => !e.name.trim()).map(() => '種目名が空の行があります'),
   ]) ?? []
-  const exerciseCount = blocks?.reduce((a, b) => a + b.exercises.length * b.members.length, 0) ?? 0
+  const exerciseCount = blocks?.reduce((a, b) => a + (b.exercises.length + b.activities.length + (b.sleep ? 1 : 0)) * b.members.length, 0) ?? 0
 
   const save = () => {
     if (!blocks) return
@@ -73,6 +74,21 @@ export function TextImport(props: { onClose: () => void }) {
     for (const b of blocks) {
       for (const name of b.members) {
         const memberId = idByName.get(name)!
+        // 睡眠：その日のコンディションに入れる（体調などは残す）
+        if (b.sleep) {
+          const c = actions.getState().conditions.find((x) => x.date === b.date && (x.memberId ?? 'me') === memberId)
+          actions.saveCondition({ ...(c ?? { id: uid(), memo: '' }), memberId, date: b.date, sleep: b.sleep.hours ?? c?.sleep, bedtime: b.sleep.bedtime ?? c?.bedtime, wake: b.sleep.wake ?? c?.wake })
+          added++
+        }
+        // 有酸素：同じ日・同じ種類があれば上書き（ショートカットを2回貼っても増えない）
+        for (const a of b.activities) {
+          const cur = actions.getState().activities.find((x) => x.date === b.date && x.kind === a.kind && (x.memberId ?? 'me') === memberId)
+          const v = { start: a.start, minutes: a.minutes, distance: a.distance, steps: a.steps }
+          const merged = Object.fromEntries(Object.entries(v).filter(([, x]) => x != null))
+          actions.saveActivity({ ...(cur ?? { id: uid(), memo: '' }), ...merged, memberId, date: b.date, kind: a.kind })
+          added++
+        }
+        if (!b.exercises.length) continue
         const logs: ExerciseLog[] = b.exercises.map((e) => ({ id: uid(), name: e.name.trim(), sets: textToSets(e.setsText) }))
         const cur = actions.getState()
         const existing = cur.sessions.find((s) => s.date === b.date && (s.memberId ?? 'me') === memberId)
@@ -82,15 +98,15 @@ export function TextImport(props: { onClose: () => void }) {
           const fresh = logs.filter((l) => !existing.exercises.some((x) => x.name === l.name && JSON.stringify(x.sets) === JSON.stringify(l.sets)))
           added += fresh.length
           const memo = [existing.memo, ...notes.filter((n) => !existing.memo.includes(n))].filter(Boolean).join('\n')
-          actions.saveSession({ ...existing, memo, exercises: [...existing.exercises, ...fresh], start: existing.start ?? b.start, end: existing.end ?? b.end })
+          actions.saveSession({ ...existing, memo, exercises: [...existing.exercises, ...fresh], start: existing.start ?? b.start, end: existing.end ?? b.end, place: existing.place ?? b.place })
         } else {
           added += logs.length
-          actions.saveSession({ id: uid(), memberId, date: b.date, sport: cur.profile.sport || 'ウェイトトレーニング', memo: notes.join('\n'), exercises: logs, start: b.start, end: b.end })
+          actions.saveSession({ id: uid(), memberId, date: b.date, sport: cur.profile.sport || 'ウェイトトレーニング', memo: notes.join('\n'), exercises: logs, start: b.start, end: b.end, place: b.place })
         }
       }
     }
     saveDraft('')
-    toast(added ? `${added}件の種目を取り込みました` : '新しい記録はありませんでした（取り込み済み）')
+    toast(added ? `${added}件を取り込みました` : '新しい記録はありませんでした（取り込み済み）')
     props.onClose()
   }
 
@@ -113,6 +129,10 @@ export function TextImport(props: { onClose: () => void }) {
           ・「2db」の次の行はダンベル2個（重量は片手）<br />
           ・「19:30-20:45」の行でトレーニング時間も入ります<br />
           ・「30秒」「60s」でキープ時間<br />
+          ・「k 30 10 3」のように人の頭文字＋数字の行は、直前の種目をその人の記録にします<br />
+          ・「2026/11/22 エニタイム」のように日付の後ろに書くと場所として残ります<br />
+          ・「睡眠 23:40-6:50」「睡眠 7h10m」で睡眠時間<br />
+          ・「ウォーキング 30分 2.5km」「歩数 8000」で有酸素の記録<br />
           ・書きかけは自動で残ります
         </div>
       </Sheet>
@@ -140,6 +160,7 @@ export function TextImport(props: { onClose: () => void }) {
               <span className="muted">〜</span>
               <input type="time" value={b.end ?? ''} onChange={(e) => patchBlock(b.key, (x) => ({ ...x, end: e.target.value || undefined }))} style={{ width: 'auto', padding: '6px 8px' }} aria-label="終了" />
             </div>
+            <input value={b.place ?? ''} placeholder="場所（任意）例 エニタイムフィットネス" onChange={(e) => patchBlock(b.key, (x) => ({ ...x, place: e.target.value || undefined }))} style={{ marginBottom: 10 }} />
             <div className="chips" style={{ marginBottom: 12 }}>
               {[...raw.members.map((m) => m.name), ...extra].map((n) => {
                 const on = b.members.includes(n)
@@ -151,6 +172,28 @@ export function TextImport(props: { onClose: () => void }) {
                 )
               })}
             </div>
+            {b.sleep && (
+              <div className="ex row" style={{ background: 'var(--fill2)', border: '1px solid var(--line)' }}>
+                <span style={{ fontSize: 18 }}>😴</span>
+                <div className="grow">
+                  <b>睡眠 {sleepLabel(b.sleep.hours)}</b>
+                  {b.sleep.bedtime && <span className="sub" style={{ marginLeft: 8 }}>{b.sleep.bedtime}〜{b.sleep.wake}</span>}
+                  <div className="sub">元の行：{b.sleep.raw}</div>
+                </div>
+                <button className="icon-btn" style={{ width: 32, height: 32, fontSize: 13 }} aria-label="外す" onClick={() => patchBlock(b.key, (x) => ({ ...x, sleep: undefined }))}>✕</button>
+              </div>
+            )}
+            {b.activities.map((a) => (
+              <div key={a.key} className="ex row" style={{ background: 'var(--fill2)', border: '1px solid var(--line)' }}>
+                <span style={{ fontSize: 18 }}>{activityMeta(a.kind).icon}</span>
+                <div className="grow">
+                  <b>{activityMeta(a.kind).label}</b>
+                  <span className="sub" style={{ marginLeft: 8 }}>{activitySummary(a)}</span>
+                  <div className="sub">元の行：{a.raw}</div>
+                </div>
+                <button className="icon-btn" style={{ width: 32, height: 32, fontSize: 13 }} aria-label="外す" onClick={() => patchBlock(b.key, (x) => ({ ...x, activities: x.activities.filter((y) => y.key !== a.key) }))}>✕</button>
+              </div>
+            ))}
             {b.exercises.map((e) => {
               const badge = e.name.trim() ? MATCH_LABEL[e.match] : MATCH_LABEL.missing
               return (

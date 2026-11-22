@@ -94,3 +94,21 @@ export const minutesBetween = (start?: string, end?: string) => {
 
 export const durationLabel = (min?: number) =>
   min == null ? '' : min >= 60 ? `${Math.floor(min / 60)}時間${min % 60 ? `${min % 60}分` : ''}` : `${min}分`
+
+/** 7.1666 → "7時間10分" */
+export const sleepLabel = (h?: number) => {
+  if (h == null) return '—'
+  const m = Math.round(h * 60)
+  return `${Math.floor(m / 60)}時間${m % 60 ? `${m % 60}分` : ''}`
+}
+
+/** 日をまたぐ時間帯の長さ（23:40 → 6:50 = 7時間10分）を時間で返す */
+export const hoursAcrossMidnight = (from: string, to: string) => {
+  const [a, b] = [from, to].map((t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m })
+  const d = (b - a + 1440) % 1440
+  return Math.round((d / 60) * 100) / 100
+}
+
+export const activitySummary = (a: { minutes?: number; distance?: number; steps?: number; start?: string }) =>
+  [a.start, a.minutes != null && durationLabel(a.minutes), a.distance != null && `${num(a.distance, 2)}km`, a.steps != null && `${a.steps.toLocaleString()}歩`]
+    .filter(Boolean).join('・')

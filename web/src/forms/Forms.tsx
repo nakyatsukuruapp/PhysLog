@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react'
 import { actions, uid, useData } from '../store'
 import type {
-  BodyMeasurement, ConditionRecord, ExerciseLog, PhysicalAbility, TrainingSession,
+  Activity, ActivityKind, BodyMeasurement, ConditionRecord, ExerciseLog, PhysicalAbility, TrainingSession,
 } from '../types'
 import { DateField, Scale, Sheet, Stepper, UnitInput, toast } from '../components/ui'
 import {
-  ABILITY_PRESETS, CONDITION_COLORS, EXERCISES, SPORTS, abilityIcon, findAbility, isLowerBetter, resolveAlias,
+  ACTIVITY_KINDS, ABILITY_PRESETS, CONDITION_COLORS, EXERCISES, SPORTS, abilityIcon, findAbility, isLowerBetter, resolveAlias,
 } from '../lib/presets'
-import { durationLabel, exerciseVolume, fullDate, kg, labelDate, minutesBetween, nowHM, num, parseNum, sessionVolume, setsSummary } from '../lib/format'
+import { activitySummary, hoursAcrossMidnight, durationLabel, exerciseVolume, fullDate, kg, labelDate, minutesBetween, nowHM, num, parseNum, sessionVolume, setsSummary } from '../lib/format'
 
 const str = (v?: number) => (v == null ? '' : String(v))
 const byDateDesc = <T extends { date: string }>(a: T, b: T) => b.date.localeCompare(a.date)
@@ -67,12 +67,14 @@ export function ConditionForm(props: { date: string; existing?: ConditionRecord;
   const [date, setDate] = useState(props.date)
   const e = props.existing
   const [sleep, setSleep] = useState(str(e?.sleep))
+  const [bedtime, setBedtime] = useState(e?.bedtime ?? '')
+  const [wake, setWake] = useState(e?.wake ?? '')
   const [fatigue, setFatigue] = useState(e?.fatigue)
   const [cond, setCond] = useState(e?.condition)
   const [memo, setMemo] = useState(e?.memo ?? '')
   const ok = parseNum(sleep) != null || fatigue != null || cond != null || memo.trim() !== ''
   const save = () => {
-    actions.saveCondition({ id: e?.id ?? uid(), date: date, sleep: parseNum(sleep), fatigue, condition: cond, memo })
+    actions.saveCondition({ ...e, id: e?.id ?? uid(), date: date, sleep: parseNum(sleep), bedtime: bedtime || undefined, wake: wake || undefined, fatigue, condition: cond, memo })
     toast('コンディションを保存しました')
     props.onClose()
   }
@@ -92,6 +94,12 @@ export function ConditionForm(props: { date: string; existing?: ConditionRecord;
         ))}
       </div>
       <UnitInput value={sleep} onChange={setSleep} unit="時間" placeholder="例 7.5" />
+      <div className="row" style={{ marginTop: 8 }}>
+        <span className="sub">就寝</span>
+        <input type="time" value={bedtime} onChange={(ev) => { setBedtime(ev.target.value); if (ev.target.value && wake && !sleep) setSleep(String(hoursAcrossMidnight(ev.target.value, wake))) }} style={{ width: 'auto' }} />
+        <span className="sub">起床</span>
+        <input type="time" value={wake} onChange={(ev) => { setWake(ev.target.value); if (bedtime && ev.target.value && !sleep) setSleep(String(hoursAcrossMidnight(bedtime, ev.target.value))) }} style={{ width: 'auto' }} />
+      </div>
       <label className="label">体調</label>
       <Scale value={cond} onChange={setCond} colors={CONDITION_COLORS} low="1 最高" high="5 不調" />
       <label className="label">疲労度</label>
@@ -374,3 +382,66 @@ function ExercisePicker(props: { past: TrainingSession[]; onPick: (name: string)
 }
 
 export { kg, num }
+
+// ─────────────────────────────────────────────
+// ウォーキング・ランニング
+// ─────────────────────────────────────────────
+export function ActivityForm(props: { date: string; existing?: Activity; onClose: () => void }) {
+  const [date, setDate] = useState(props.date)
+  const { activities } = useData()
+  const e = props.existing
+  const [kind, setKind] = useState<ActivityKind>(e?.kind ?? 'walk')
+  const prev = useMemo(() => [...activities].filter((a) => a.kind === kind && a.id !== e?.id).sort(byDateDesc)[0], [activities, kind, e])
+  const [start, setStart] = useState(e?.start ?? '')
+  const [minutes, setMinutes] = useState(str(e?.minutes))
+  const [distance, setDistance] = useState(str(e?.distance))
+  const [steps, setSteps] = useState(str(e?.steps))
+  const [memo, setMemo] = useState(e?.memo ?? '')
+  const ok = [minutes, distance, steps].some((x) => parseNum(x) != null)
+  const save = () => {
+    actions.saveActivity({ ...e, id: e?.id ?? uid(), date, kind, start: start || undefined, minutes: parseNum(minutes), distance: parseNum(distance), steps: kind === 'bike' ? undefined : parseNum(steps), memo })
+    toast('保存しました')
+    props.onClose()
+  }
+  return (
+    <Sheet
+      title={`有酸素・${labelDate(date)}`}
+      onClose={props.onClose}
+      onSave={save}
+      canSave={ok}
+      onDelete={e ? () => { actions.remove('activities', e.id); props.onClose() } : undefined}
+    >
+      <DateField value={date} onChange={setDate} />
+      <div className="chips" style={{ marginBottom: 8 }}>
+        {ACTIVITY_KINDS.map((k) => (
+          <button key={k.id} className={'chip' + (kind === k.id ? ' on' : '')} onClick={() => setKind(k.id)}>{k.icon} {k.label}</button>
+        ))}
+      </div>
+      {prev && <div className="sub" style={{ marginBottom: 8 }}>前回 {prev.date.slice(5).replace('-', '/')}：{activitySummary(prev)}</div>}
+      <div className="grid2">
+        <div>
+          <label className="label">時間</label>
+          <UnitInput value={minutes} onChange={setMinutes} unit="分" placeholder="例 30" autoFocus />
+        </div>
+        <div>
+          <label className="label">距離</label>
+          <UnitInput value={distance} onChange={setDistance} unit="km" placeholder="例 2.5" />
+        </div>
+      </div>
+      <div className="grid2">
+        {kind !== 'bike' ? (
+          <div>
+            <label className="label">歩数</label>
+            <UnitInput value={steps} onChange={setSteps} unit="歩" placeholder="任意" />
+          </div>
+        ) : <div />}
+        <div>
+          <label className="label">開始時刻</label>
+          <input type="time" value={start} onChange={(ev) => setStart(ev.target.value)} />
+        </div>
+      </div>
+      <label className="label">メモ</label>
+      <textarea value={memo} onChange={(ev) => setMemo(ev.target.value)} placeholder="コース・ペースなど" />
+    </Sheet>
+  )
+}

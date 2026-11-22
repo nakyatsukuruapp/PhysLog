@@ -16,6 +16,7 @@ const empty = (): AppData => ({
   sessions: [],
   conditions: [],
   photos: [],
+  activities: [],
 })
 
 function normalize(d: Partial<AppData>): AppData {
@@ -36,7 +37,7 @@ function load(): AppData {
     const done = new Set<string>(JSON.parse(localStorage.getItem(SEEDED) ?? '[]'))
     const seed = SEED as Partial<AppData>
     const pick = <T extends { id: string }>(l: T[] = []) => l.filter((x) => !done.has(x.id))
-    const fresh = { members: seed.members, sessions: pick(seed.sessions), bodies: pick(seed.bodies), abilities: pick(seed.abilities), conditions: pick(seed.conditions) }
+    const fresh = { members: seed.members, sessions: pick(seed.sessions), bodies: pick(seed.bodies), abilities: pick(seed.abilities), conditions: pick(seed.conditions), activities: pick(seed.activities) }
     // 既に入れたセッションに後から足した種目は、種目単位で追記する
     // 訂正で差し替えた種目（古いID）は一度だけ取り除く
     const removed = ((SEED as { removedExerciseIds?: string[] }).removedExerciseIds ?? []).filter((id) => !done.has('rm:' + id))
@@ -53,7 +54,7 @@ function load(): AppData {
       if (!add.length && !memoLines.length) return s
       return { ...s, exercises: [...s.exercises, ...add], memo: [s.memo, ...memoLines].filter(Boolean).join('\n') }
     })
-    ;[fresh.sessions, fresh.bodies, fresh.abilities, fresh.conditions].forEach((l) => l.forEach((x) => done.add(x.id)))
+    ;[fresh.sessions, fresh.bodies, fresh.abilities, fresh.conditions, fresh.activities].forEach((l) => l.forEach((x) => done.add(x.id)))
     seed.sessions?.forEach((x) => {
       x.exercises.forEach((e) => done.add(e.id))
       x.memo.split('\n').filter(Boolean).forEach((l) => done.add('memo:' + l))
@@ -96,6 +97,7 @@ function mergeInto(state: AppData, d: Partial<AppData>): AppData {
     sessions: mergeList(state.sessions, remap(d.sessions)),
     conditions: mergeList(state.conditions, remap(d.conditions)),
     photos: mergeList(state.photos, remap(d.photos)),
+    activities: mergeList(state.activities ?? [], remap(d.activities)),
   }
 }
 
@@ -113,6 +115,7 @@ function scope(s: AppData): AppData {
     sessions: s.sessions.filter((x) => belongs(x.memberId, a)),
     conditions: s.conditions.filter((x) => belongs(x.memberId, a)),
     photos: s.photos.filter((x) => belongs(x.memberId, a)),
+    activities: s.activities.filter((x) => belongs(x.memberId, a)),
   }
 }
 
@@ -139,7 +142,7 @@ export const useRawData = (): AppData => useSyncExternalStore(subscribe, () => s
 
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 
-type Collection = 'bodies' | 'abilities' | 'sessions' | 'conditions' | 'photos'
+type Collection = 'bodies' | 'abilities' | 'sessions' | 'conditions' | 'photos' | 'activities'
 type ItemOf<C extends Collection> = AppData[C][number]
 
 function upsert<C extends Collection>(col: C, item: ItemOf<C>) {
@@ -161,6 +164,7 @@ export const actions = {
   saveSession: (s: ItemOf<'sessions'>) => upsert('sessions', s),
   saveCondition: (c: ItemOf<'conditions'>) => upsert('conditions', c),
   savePhoto: (p: ItemOf<'photos'>) => upsert('photos', p),
+  saveActivity: (a: ItemOf<'activities'>) => upsert('activities', a),
   remove,
   setProfile: (p: AppData['profile']) => commit({ ...state, profile: p }),
 
@@ -186,6 +190,7 @@ export const actions = {
       sessions: keep(state.sessions),
       conditions: keep(state.conditions),
       photos: keep(state.photos),
+      activities: keep(state.activities),
     })
   },
 
@@ -196,7 +201,7 @@ export const actions = {
   clearActive: () => {
     const a = state.activeMemberId
     const keep = <T extends { memberId?: string }>(l: T[]) => l.filter((x) => !belongs(x.memberId, a))
-    commit({ ...state, bodies: keep(state.bodies), abilities: keep(state.abilities), sessions: keep(state.sessions), conditions: keep(state.conditions), photos: keep(state.photos) })
+    commit({ ...state, bodies: keep(state.bodies), abilities: keep(state.abilities), sessions: keep(state.sessions), conditions: keep(state.conditions), photos: keep(state.photos), activities: keep(state.activities) })
   },
   getState: () => state,
 }

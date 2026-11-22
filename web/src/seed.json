@@ -272,6 +272,224 @@
           ]
         }
       ]
+    },
+    {
+      "id": "20261122-me-1",
+      "memberId": "me",
+      "date": "2026-11-22",
+      "sport": "ウェイトトレーニング",
+      "place": "エニタイムフィットネス",
+      "memo": "",
+      "exercises": [
+        {
+          "id": "20261122-me-inc",
+          "name": "Hammer Strength Iso-Lateral Incline Press",
+          "sets": [
+            {
+              "weight": 30,
+              "reps": 10
+            },
+            {
+              "weight": 60,
+              "reps": 10
+            },
+            {
+              "weight": 60,
+              "reps": 10
+            }
+          ]
+        },
+        {
+          "id": "20261122-me-bsq",
+          "name": "バックスクワット",
+          "sets": [
+            {
+              "weight": 50,
+              "reps": 5
+            },
+            {
+              "weight": 90,
+              "reps": 5
+            },
+            {
+              "weight": 90,
+              "reps": 5
+            }
+          ]
+        },
+        {
+          "id": "20261122-me-rdl",
+          "name": "ルーマニアンデッドリフト",
+          "sets": [
+            {
+              "weight": 50,
+              "reps": 10
+            },
+            {
+              "weight": 50,
+              "reps": 10
+            },
+            {
+              "weight": 50,
+              "reps": 10
+            }
+          ]
+        },
+        {
+          "id": "20261122-me-row",
+          "name": "Hammer Strength Select Seated Row",
+          "sets": [
+            {
+              "weight": 47,
+              "reps": 10
+            },
+            {
+              "weight": 47,
+              "reps": 10
+            },
+            {
+              "weight": 47,
+              "reps": 10
+            }
+          ]
+        },
+        {
+          "id": "20261122-me-pd",
+          "name": "Hammer Strength Select Lat Pulldown",
+          "sets": [
+            {
+              "weight": 47,
+              "reps": 10
+            },
+            {
+              "weight": 47,
+              "reps": 10
+            },
+            {
+              "weight": 47,
+              "reps": 10
+            }
+          ]
+        },
+        {
+          "id": "20261122-me-lp",
+          "name": "Hammer Strength Select Seated Leg Press",
+          "sets": [
+            {
+              "weight": 135,
+              "reps": 10
+            },
+            {
+              "weight": 135,
+              "reps": 10
+            },
+            {
+              "weight": 135,
+              "reps": 10
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "20261122-katsura-1",
+      "memberId": "katsura",
+      "date": "2026-11-22",
+      "sport": "ウェイトトレーニング",
+      "place": "エニタイムフィットネス",
+      "memo": "",
+      "exercises": [
+        {
+          "id": "20261122-katsura-inc",
+          "name": "Hammer Strength Iso-Lateral Incline Press",
+          "sets": [
+            {
+              "weight": 30,
+              "reps": 10
+            },
+            {
+              "weight": 30,
+              "reps": 10
+            },
+            {
+              "weight": 30,
+              "reps": 10
+            }
+          ]
+        },
+        {
+          "id": "20261122-katsura-bsq",
+          "name": "バックスクワット",
+          "sets": [
+            {
+              "weight": 50,
+              "reps": 5
+            },
+            {
+              "weight": 50,
+              "reps": 5
+            },
+            {
+              "weight": 50,
+              "reps": 5
+            }
+          ]
+        },
+        {
+          "id": "20261122-katsura-rdl",
+          "name": "ルーマニアンデッドリフト",
+          "sets": [
+            {
+              "weight": 50,
+              "reps": 5
+            },
+            {
+              "weight": 50,
+              "reps": 5
+            },
+            {
+              "weight": 50,
+              "reps": 5
+            }
+          ]
+        },
+        {
+          "id": "20261122-katsura-row",
+          "name": "Hammer Strength Select Seated Row",
+          "sets": [
+            {
+              "weight": 47,
+              "reps": 10
+            },
+            {
+              "weight": 40,
+              "reps": 10
+            },
+            {
+              "weight": 40,
+              "reps": 10
+            }
+          ]
+        },
+        {
+          "id": "20261122-katsura-pd",
+          "name": "Hammer Strength Select Lat Pulldown",
+          "sets": [
+            {
+              "weight": 26,
+              "reps": 10
+            },
+            {
+              "weight": 26,
+              "reps": 10
+            },
+            {
+              "weight": 26,
+              "reps": 10
+            }
+          ]
+        }
+      ]
     }
   ],
   "activeMemberId": "me",

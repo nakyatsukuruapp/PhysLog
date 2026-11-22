@@ -1,18 +1,19 @@
 import { useMemo, useState } from 'react'
 import { actions, uid, useData } from '../store'
-import type { BodyMeasurement, ConditionRecord, PhysicalAbility, TrainingSession } from '../types'
+import type { Activity, BodyMeasurement, ConditionRecord, PhysicalAbility, TrainingSession } from '../types'
 import { DateNav, Scale, toast } from '../components/ui'
-import { AbilityForm, BodyForm, ConditionForm, TrainingForm } from '../forms/Forms'
+import { AbilityForm, ActivityForm, BodyForm, ConditionForm, TrainingForm } from '../forms/Forms'
 import { TextImport } from '../forms/TextImport'
 import { estimateAll } from '../lib/estimate'
-import { CONDITION_COLORS, abilityIcon, isLowerBetter } from '../lib/presets'
-import { addDays, durationLabel, minutesBetween, num, sessionVolume, setsSummary, todayKey } from '../lib/format'
+import { CONDITION_COLORS, abilityIcon, activityMeta, isLowerBetter } from '../lib/presets'
+import { activitySummary, addDays, sleepLabel, durationLabel, minutesBetween, num, sessionVolume, setsSummary, todayKey } from '../lib/format'
 
 export type Editing =
   | { kind: 'body'; date: string; item?: BodyMeasurement }
   | { kind: 'condition'; date: string; item?: ConditionRecord }
   | { kind: 'ability'; date: string; item?: PhysicalAbility }
   | { kind: 'training'; date: string; item?: TrainingSession }
+  | { kind: 'activity'; date: string; item?: Activity }
   | { kind: 'text' }
 
 export function EditorHost(props: { editing: Editing | null; onClose: () => void }) {
@@ -25,6 +26,7 @@ export function EditorHost(props: { editing: Editing | null; onClose: () => void
     case 'condition': return <ConditionForm {...p} existing={e.item} />
     case 'ability': return <AbilityForm {...p} existing={e.item} />
     case 'training': return <TrainingForm {...p} existing={e.item} />
+    case 'activity': return <ActivityForm {...p} existing={e.item} />
   }
 }
 
@@ -36,6 +38,7 @@ export function Today(props: { onEdit: (e: Editing) => void }) {
   const body = d.bodies.filter((b) => b.date === date).at(-1)
   const cond = d.conditions.filter((c) => c.date === date).at(-1)
   const dayAbilities = d.abilities.filter((a) => a.date === date)
+  const dayActivities = d.activities.filter((a) => a.date === date)
 
   const prevBody = useMemo(
     () => [...d.bodies].filter((b) => b.date < date && b.weight != null).sort((a, b) => b.date.localeCompare(a.date))[0],
@@ -114,7 +117,7 @@ export function Today(props: { onEdit: (e: Editing) => void }) {
             <div key={s.id} className="list-item tap" onClick={() => props.onEdit({ kind: 'training', date, item: s })}>
               <div className="grow">
                 <div className="row" style={{ marginBottom: 4 }}>
-                  <b className="grow">{s.sport || 'トレーニング'}{s.start && <span className="sub" style={{ fontWeight: 500, marginLeft: 8 }}>{s.start}{s.end ? `〜${s.end}（${durationLabel(minutesBetween(s.start, s.end))}）` : '〜'}</span>}</b>
+                  <b className="grow">{s.sport || 'トレーニング'}{s.start && <span className="sub" style={{ fontWeight: 500, marginLeft: 8 }}>{s.start}{s.end ? `〜${s.end}（${durationLabel(minutesBetween(s.start, s.end))}）` : '〜'}</span>}{s.place && <span className="sub" style={{ fontWeight: 500, marginLeft: 8 }}>📍{s.place}</span>}</b>
                   {sessionVolume(s) > 0 && <span className="sub">{Math.round(sessionVolume(s)).toLocaleString()}kg</span>}
                 </div>
                 {s.exercises.map((x) => (
@@ -149,6 +152,9 @@ export function Today(props: { onEdit: (e: Editing) => void }) {
               {cond?.sleep != null && ![6, 7, 8].includes(cond.sleep) && <span className="chip on">{cond.sleep}h</span>}
             </div>
           </div>
+          {cond?.sleep != null && (cond.bedtime || ![6, 7, 8].includes(cond.sleep)) && (
+            <div className="sub" style={{ marginTop: 6, textAlign: 'right' }}>😴 {sleepLabel(cond.sleep)}{cond.bedtime && `（${cond.bedtime}〜${cond.wake}）`}</div>
+          )}
           {cond?.fatigue != null && <div className="sub" style={{ marginTop: 8 }}>疲労度 {cond.fatigue}</div>}
         </div>
 
@@ -180,6 +186,26 @@ export function Today(props: { onEdit: (e: Editing) => void }) {
             )
           )}
         </div>
+      </div>
+
+      {/* ウォーキング・有酸素 */}
+      <div className="card">
+        <div className="card-h">
+          <span className="ic" style={{ background: '#e6fbf6' }}>🚶</span>
+          <h2>ウォーキング・有酸素</h2>
+          <button className="btn sm" onClick={() => props.onEdit({ kind: 'activity', date })}>＋ 記録</button>
+        </div>
+        {dayActivities.length === 0 ? (
+          <div className="sub">時間・距離・歩数。「歩数 8000」をテキストで貼っても入ります</div>
+        ) : (
+          dayActivities.map((a) => (
+            <div key={a.id} className="list-item tap" onClick={() => props.onEdit({ kind: 'activity', date, item: a })}>
+              <span style={{ fontSize: 18 }}>{activityMeta(a.kind).icon}</span>
+              <span className="grow" style={{ fontWeight: 600 }}>{activityMeta(a.kind).label}</span>
+              <span className="sub">{activitySummary(a)}</span>
+            </div>
+          ))
+        )}
       </div>
 
       {/* 身体能力 */}

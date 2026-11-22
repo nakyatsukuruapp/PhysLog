@@ -9,9 +9,9 @@
 // 方針：略称・表記ゆれ・打ち間違いは推測して埋めるが、推測した箇所は
 // confidence を下げて確認画面で目立たせる（勝手に確定させない）。
 
-import type { SetEntry } from '../types'
+import type { ActivityKind, SetEntry } from '../types'
 import { EXERCISES, EXERCISE_ALIASES } from './presets'
-import { toKey } from './format'
+import { hoursAcrossMidnight, toKey } from './format'
 
 export interface ParsedExercise {
   key: string
@@ -23,13 +23,103 @@ export interface ParsedExercise {
   note?: string
 }
 
+export interface ParsedSleep {
+  hours?: number
+  bedtime?: string
+  wake?: string
+  raw: string
+}
+
+export interface ParsedActivity {
+  key: string
+  kind: ActivityKind
+  start?: string
+  minutes?: number
+  distance?: number
+  steps?: number
+  raw: string
+}
+
 export interface ParsedBlock {
   key: string
   date: string
   members: string[] // メンバー名（未登録の名前も含む）
   start?: string
   end?: string
+  /** 場所（「2026/11/22 エニタイムフィットネス」の後半など） */
+  place?: string
   exercises: ParsedExercise[]
+  sleep?: ParsedSleep
+  activities: ParsedActivity[]
+}
+
+// ─────────── 睡眠・有酸素の行 ───────────
+// ヘルスケアからショートカットで作ったテキスト（「睡眠 23:40-6:50 7h10m」「歩数 8234」）も読む
+
+const RANGE_RE = /(\d{1,2}):(\d{2})\s*[-~〜–]\s*(\d{1,2}):(\d{2})/
+const hm = (h: string, m: string) => `${h.padStart(2, '0')}:${m}`
+
+const SLEEP_RE = /^(?:睡眠|すいみん|寝た|就寝|sleep)(?=[\s:：\d]|$)\s*[:：]?\s*(.*)$/i
+
+export function parseSleepLine(line: string): ParsedSleep | null {
+  const n = line.normalize('NFKC').trim()
+  const m = n.match(SLEEP_RE)
+  if (!m) return null
+  let body = m[1]
+  const out: ParsedSleep = { raw: line }
+  const r = body.match(RANGE_RE)
+  if (r) {
+    out.bedtime = hm(r[1], r[2]); out.wake = hm(r[3], r[4])
+    out.hours = hoursAcrossMidnight(out.bedtime, out.wake)
+    body = body.replace(r[0], ' ')
+  }
+  // 実際に眠っていた時間（ヘルスケアの値）があれば、そちらを優先する
+  const hmin = body.match(/(\d+(?:\.\d+)?)\s*(?:h|時間)\s*(?:(\d+)\s*(?:m|min|分))?/i)
+  const onlyMin = body.match(/(\d+)\s*(?:m|min|分)(?![a-z])/i)
+  const colon = body.match(/^\s*(\d{1,2}):(\d{2})\s*$/)
+  const bare = body.match(/^\s*(\d+(?:\.\d+)?)\s*$/)
+  if (hmin) out.hours = Number(hmin[1]) + (hmin[2] ? Number(hmin[2]) / 60 : 0)
+  else if (onlyMin) out.hours = Number(onlyMin[1]) / 60
+  else if (colon) out.hours = Number(colon[1]) + Number(colon[2]) / 60
+  else if (bare && Number(bare[1]) <= 24) out.hours = Number(bare[1])
+  if (out.hours != null) out.hours = Math.round(out.hours * 100) / 100
+  if (out.hours == null && !out.bedtime) return null
+  return out
+}
+
+const ACT_RE = /^(ウォーキング|ウォーク|散歩|walk(?:ing)?|ランニング|ジョギング|ジョグ|ラン|run(?:ning)?|バイク|自転車|サイクリング|bike|歩数|steps?|歩行距離|歩行\+?ランニングの距離|距離)(?=[\s:：\d]|$)\s*[:：]?\s*(.*)$/i
+
+export function parseActivityLine(line: string): Omit<ParsedActivity, 'key'> | null {
+  const n = line.normalize('NFKC').trim()
+  const m = n.match(ACT_RE)
+  if (!m) return null
+  const word = m[1].toLowerCase()
+  let body = m[2]
+  const kind: ActivityKind = /ラン(?!ニングの距離)|ジョ|run/.test(word) ? 'run' : /バイク|自転車|サイクリング|bike/.test(word) ? 'bike' : 'walk'
+  const out: Omit<ParsedActivity, 'key'> = { kind, raw: line }
+  const r = body.match(RANGE_RE)
+  if (r) {
+    out.start = hm(r[1], r[2])
+    out.minutes = Math.round(hoursAcrossMidnight(out.start, hm(r[3], r[4])) * 60)
+    body = body.replace(r[0], ' ')
+  }
+  const km = body.match(/(\d+(?:\.\d+)?)\s*(?:km|キロ)/i)
+  if (km) { out.distance = Number(km[1]); body = body.replace(km[0], ' ') }
+  const st = body.match(/(\d[\d,]*)\s*歩/)
+  if (st) { out.steps = Number(st[1].replace(/,/g, '')); body = body.replace(st[0], ' ') }
+  const h = body.match(/(\d+(?:\.\d+)?)\s*(?:時間|h)(?:\s*(\d+)\s*(?:分|min|m))?/i)
+  const mi = body.match(/(\d+(?:\.\d+)?)\s*(?:分|min|m)(?![a-z])/i)
+  if (h) { out.minutes = Math.round(Number(h[1]) * 60 + (h[2] ? Number(h[2]) : 0)); body = body.replace(h[0], ' ') }
+  else if (mi) { out.minutes = Math.round(Number(mi[1])); body = body.replace(mi[0], ' ') }
+  // 単位のない数字：「歩数 8234」は歩数、「歩行距離 3.2」はkm
+  const bare = body.match(/(\d[\d,]*(?:\.\d+)?)/)
+  if (bare) {
+    const v = Number(bare[1].replace(/,/g, ''))
+    if (/歩数|step/.test(word) && out.steps == null) out.steps = Math.round(v)
+    else if (/距離/.test(word) && out.distance == null) out.distance = v
+  }
+  if (out.minutes == null && out.distance == null && out.steps == null) return null
+  return out
 }
 
 export interface ParseResult {
@@ -158,20 +248,67 @@ export function parseQuickText(text: string, opts: { memberNames: string[]; know
   let open: ParsedExercise | null = null
   let k = 0
 
-  const current = () => {
-    let b = blocks[blocks.length - 1]
-    if (!b || b.date !== date || b.members.join('|') !== members.join('|')) {
-      b = { key: 'b' + k++, date, members: [...members], exercises: [], start, end }
+  const current = (who: string[] = members) => {
+    let b = [...blocks].reverse().find((x) => x.date === date && x.members.join('|') === who.join('|'))
+    if (!b || (who === members && b !== blocks[blocks.length - 1])) {
+      b = { key: 'b' + k++, date, members: [...who], exercises: [], activities: [], start, end, place }
       blocks.push(b)
     }
     return b
   }
+  // 「k 30 10 3」「r 50 5 1、90 5 2」：人の頭文字＋数字の行は、直前の種目をその人の記録にする
+  const initialOf = (t: string) => {
+    const hits = opts.memberNames.filter((m) => m.normalize('NFKC').toLowerCase().startsWith(t.toLowerCase()))
+    return hits.length === 1 ? hits[0] : null
+  }
+  let lastName: { name: string; match: ParsedExercise['match']; raw: string } | null = null
+  let place: string | undefined
   const isMemberToken = (t: string) =>
     opts.memberNames.some((m) => norm(m) === norm(t)) || /^[A-Z][a-z]+$/.test(t) || /^[一-鿿]{1,4}(さん|くん|ちゃん)?$/.test(t)
 
   let start: string | undefined, end: string | undefined
-  const hm = (h: string, m: string) => `${h.padStart(2, '0')}:${m}`
   for (const line of lines) {
+    // 睡眠・有酸素の行（時間帯の行より先に見る。「睡眠 23:40-6:50」をトレーニング時間と取り違えないため）
+    const sl = parseSleepLine(line)
+    if (sl) { current().sleep = sl; open = null; continue }
+    const ac = parseActivityLine(line)
+    if (ac) {
+      const b = current()
+      const same = b.activities.find((x) => x.kind === ac.kind)
+      if (same) {
+        // ショートカットの「歩数」「歩行距離」の行は、同じ日のウォーキングにまとめる
+        for (const f of ['start', 'minutes', 'distance', 'steps'] as const) if (ac[f] != null) (same as unknown as Record<string, unknown>)[f] = ac[f]
+        same.raw += ' / ' + line
+      } else b.activities.push({ key: 'a' + k++, ...ac })
+      open = null
+      continue
+    }
+    // 場所の行（@エニタイム / 場所：エニタイム）
+    const pl = line.normalize('NFKC').match(/^(?:@|＠|場所\s*[:：]?)\s*(.+)$/)
+    if (pl) {
+      place = pl[1].trim()
+      blocks.forEach((b) => { if (b.date === date && !b.place) b.place = place })
+      continue
+    }
+    // 人の頭文字＋数字（k 30 10 3）
+    const ini = line.normalize('NFKC').match(/^([A-Za-z])\s+(\d.*)$/)
+    const who = ini && initialOf(ini[1])
+    if (ini && who && (lastName || open)) {
+      const base: { name: string; match: ParsedExercise['match']; raw: string } = lastName ?? { name: open!.name, match: open!.match, raw: open!.raw }
+      if (open && !open.sets.length) {
+        // 種目名だけの行で作った空の記録は外し、人ごとの記録に置き換える
+        blocks.forEach((b) => { b.exercises = b.exercises.filter((e) => e !== open) })
+      }
+      lastName = base
+      open = null
+      const sets = parseSets(ini[2])
+      if (!sets) { ignored.push(line); continue }
+      const b = current([who])
+      const ex = b.exercises.find((e) => e.name === base.name)
+      if (ex) { ex.sets.push(...sets); ex.raw += ' / ' + line }
+      else b.exercises.push({ key: 'e' + k++, raw: `${base.raw} / ${line}`, name: base.name, match: base.match, sets })
+      continue
+    }
     // 時間帯の行（19:30-20:45 / 19:30〜20:45）。日付と同じ行でもよい
     const t = line.normalize('NFKC').match(/(\d{1,2}):(\d{2})\s*[-~〜–]\s*(\d{1,2}):(\d{2})/)
     if (t) {
@@ -185,8 +322,15 @@ export function parseQuickText(text: string, opts: { memberNames: string[]; know
     // 日付だけ（＋見出し語）の行
     if (d && !/\d+\s*(kg|rep|回|set|セット)/i.test(line)) {
       open = null
-      if (d !== date) { start = undefined; end = undefined }
+      lastName = null
+      if (d !== date) { start = undefined; end = undefined; place = undefined }
       date = d
+      const rest = line.normalize('NFKC').replace(DATE_RE, ' ').replace(/[(（][月火水木金土日][)）]/, ' ')
+        .replace(/トレーニング記録|トレーニング|記録|[@＠]/g, ' ').replace(/^[\s,、:：\-–]+|[\s,、:：\-–]+$/g, '').trim()
+      if (rest && !/\d/.test(rest)) {
+        place = rest
+        blocks.forEach((b) => { if (b.date === date && !b.place) b.place = place })
+      }
       continue
     }
     // ダンベル2個の指定（2db / db×2 / ダンベル2）
@@ -200,6 +344,7 @@ export function parseQuickText(text: string, opts: { memberNames: string[]; know
       if (toks.length && toks.every(isMemberToken) && toks.every((t) => resolveName(t, opts.knownExercises).match !== 'exact')) {
         members = toks.map((t) => opts.memberNames.find((m) => norm(m) === norm(t)) ?? t)
         open = null
+        lastName = null
         continue
       }
     }
@@ -217,6 +362,7 @@ export function parseQuickText(text: string, opts: { memberNames: string[]; know
       // 種目名だけの行は、数字なしの記録として残す（確認画面で入力できる）
       const r = resolveCombo(namePart, opts.knownExercises)
       if (r.match === 'unknown' && namePart.length > 30) { ignored.push(line); continue }
+      lastName = null
       open = { key: 'e' + k++, raw: line, name: r.name, match: r.match, sets: [] }
       if (dumbbellPair) {
         if (!open.name.startsWith('ダンベル')) open.name = 'ダンベル' + open.name
@@ -232,6 +378,7 @@ export function parseQuickText(text: string, opts: { memberNames: string[]; know
       continue
     }
     open = null
+    lastName = null
     let r = resolveCombo(namePart, opts.knownExercises)
     let note: string | undefined
     if (dumbbellPair) {
@@ -241,7 +388,7 @@ export function parseQuickText(text: string, opts: { memberNames: string[]; know
     }
     current().exercises.push({ key: 'e' + k++, raw: line, name: r.name, match: r.match, sets, note })
   }
-  return { blocks: blocks.filter((b) => b.exercises.length), ignored }
+  return { blocks: blocks.filter((b) => b.exercises.length || b.sleep || b.activities.length), ignored }
 }
 
 /** 確認画面でセットを手直しするための、往復できる短い表記 */

@@ -46,6 +46,8 @@ export interface TrainingSession {
   /** 開始・終了時刻（"HH:MM"）。任意 */
   start?: string
   end?: string
+  /** 場所（ジム名など）。任意 */
+  place?: string
   exercises: ExerciseLog[]
 }
 
@@ -55,6 +57,9 @@ export interface ConditionRecord {
   memberId?: string
   date: string
   sleep?: number // 時間
+  /** 就寝・起床時刻（"HH:MM"）。ヘルスケアの取り込みなどで入る。任意 */
+  bedtime?: string
+  wake?: string
   fatigue?: number // 1 = ほぼなし … 5 = 非常に高い
   condition?: number // 1 = 最高 … 5 = 不調
   memo: string
@@ -76,6 +81,22 @@ export interface BodyPhoto {
   memo: string
 }
 
+export type ActivityKind = 'walk' | 'run' | 'bike'
+
+/** ウォーキング・ランニングなどの有酸素の記録 */
+export interface Activity {
+  id: string
+  memberId?: string
+  date: string
+  kind: ActivityKind
+  /** 開始時刻（"HH:MM"）。任意 */
+  start?: string
+  minutes?: number
+  distance?: number // km
+  steps?: number
+  memo: string
+}
+
 /** 記録する人。コーチが複数人の記録を取る用途のため */
 export interface Member {
   id: string
@@ -92,4 +113,5 @@ export interface AppData {
   sessions: TrainingSession[]
   conditions: ConditionRecord[]
   photos: BodyPhoto[]
+  activities: Activity[]
 }

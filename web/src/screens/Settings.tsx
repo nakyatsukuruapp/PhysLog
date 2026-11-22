@@ -3,7 +3,7 @@ import { actions, useData, useRawData } from '../store'
 import type { AppData } from '../types'
 import { ConfirmButton, toast } from '../components/ui'
 import { makeSample } from '../lib/sample'
-import { SPORTS } from '../lib/presets'
+import { SPORTS, activityMeta } from '../lib/presets'
 import { sessionVolume, todayKey } from '../lib/format'
 
 function download(name: string, text: string, type: string) {
@@ -35,9 +35,15 @@ function toCSV(d: AppData, memberName: string) {
       x.sets.forEach((y, i) => push('トレーニング', s.date, x.name, y.weight ?? '', 'kg', `${i + 1}セット目 ${y.reps ?? ''}回`, s.memo))
   for (const s of d.sessions) push('トレーニング', s.date, '総挙上量', sessionVolume(s), 'kg', s.sport, '')
   for (const c of d.conditions) {
-    if (c.sleep != null) push('コンディション', c.date, '睡眠時間', c.sleep, '時間', '', c.memo)
+    if (c.sleep != null) push('コンディション', c.date, '睡眠時間', c.sleep, '時間', c.bedtime ? `${c.bedtime}〜${c.wake ?? ''}` : '', c.memo)
     if (c.fatigue != null) push('コンディション', c.date, '疲労度', c.fatigue, '1-5', '', c.memo)
     if (c.condition != null) push('コンディション', c.date, '体調', c.condition, '1-5', '', c.memo)
+  }
+  for (const a of d.activities ?? []) {
+    const label = activityMeta(a.kind).label
+    if (a.minutes != null) push('有酸素', a.date, `${label}（時間）`, a.minutes, '分', a.start ?? '', a.memo)
+    if (a.distance != null) push('有酸素', a.date, `${label}（距離）`, a.distance, 'km', '', a.memo)
+    if (a.steps != null) push('有酸素', a.date, `${label}（歩数）`, a.steps, '歩', '', a.memo)
   }
   return '﻿' + lines.join('\r\n')
 }
@@ -50,7 +56,7 @@ export function Settings(props: { onOpenMenu: () => void }) {
   const [paste, setPaste] = useState('')
   const active = raw.members.find((m) => m.id === raw.activeMemberId)!
   const count = (id: string) =>
-    [raw.bodies, raw.abilities, raw.sessions, raw.conditions].reduce((a, l) => a + l.filter((x) => (x.memberId ?? 'me') === id).length, 0)
+    [raw.bodies, raw.abilities, raw.sessions, raw.conditions, raw.activities].reduce((a, l) => a + l.filter((x) => (x.memberId ?? 'me') === id).length, 0)
 
   const onImport = async (f: File) => {
     try {
@@ -93,6 +99,26 @@ export function Settings(props: { onOpenMenu: () => void }) {
       </div>
 
       <button className="btn block mobile-only" style={{ marginBottom: 12, background: 'var(--card)', justifyContent: 'flex-start' }} onClick={props.onOpenMenu}>📋 メニュー提案を開く</button>
+      <div className="card">
+        <div className="card-h"><h2>ヘルスケアの睡眠・歩数を取り込む</h2></div>
+        <p className="sub" style={{ marginTop: 0, lineHeight: 1.7 }}>
+          ブラウザからはヘルスケアを直接読めないため、iPhoneの「ショートカット」アプリでテキストにして貼り付けます。
+          毎朝オートメーションで動かすと、コピーされたテキストを「テキストで入力」に貼るだけになります。
+        </p>
+        <div className="sub" style={{ lineHeight: 1.8 }}>
+          <b>ショートカットの作り方（例）</b><br />
+          1. 「ヘルスケアのサンプルを検索」：睡眠分析、開始日が過去1日以内<br />
+          2. 結果の「継続時間」を合計し、分にする<br />
+          3. 「ヘルスケアのサンプルを検索」：歩数（今日）→ 合計<br />
+          4. 「テキスト」に下の形で並べて「クリップボードにコピー」
+        </div>
+        <pre style={{ background: 'var(--fill2)', padding: 10, borderRadius: 10, fontSize: 13, whiteSpace: 'pre-wrap' }}>{`Katsura
+睡眠 412分
+歩数 8234
+歩行距離 5.6km`}</pre>
+        <div className="sub">「睡眠 23:40-6:50」「ウォーキング 30分 2.5km」「バイク 40分 15km」の形も読めます。同じ日のものを2回貼っても重複しません。</div>
+      </div>
+
       <div className="card">
         <div className="card-h"><h2>プロフィール</h2></div>
         <label className="label">普段の競技（トレーニング記録の初期値）</label>

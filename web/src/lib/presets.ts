@@ -40,11 +40,11 @@ export const abilityIcon = (name: string) => {
 }
 
 export const EXERCISES: { category: string; items: string[] }[] = [
-  { category: '胸', items: ['ベンチプレス', 'インクラインベンチプレス', 'ダンベルプレス', 'ダンベルフライ', 'チェストプレス', 'プッシュアップ'] },
-  { category: '背中', items: ['デッドリフト', '懸垂', 'ラットプルダウン', 'ベントオーバーロウ', 'シーテッドロウ'] },
+  { category: '胸', items: ['ベンチプレス', 'インクラインベンチプレス', 'ダンベルプレス', 'ダンベルフライ', 'チェストプレス', 'プッシュアップ', 'Hammer Strength Iso-Lateral Incline Press'] },
+  { category: '背中', items: ['デッドリフト', '懸垂', 'ラットプルダウン', 'ベントオーバーロウ', 'シーテッドロウ', 'ルーマニアンデッドリフト', 'Hammer Strength Select Seated Row', 'Hammer Strength Select Lat Pulldown'] },
   { category: '肩', items: ['ショルダープレス', 'サイドレイズ', 'フロントレイズ', 'リアレイズ', 'フェイスプル'] },
   { category: '腕', items: ['バーベルカール', 'ダンベルカール', 'ハンマーカール', 'プレスダウン', 'ディップス'] },
-  { category: '脚', items: ['スクワット', 'バックスクワット', 'フロントスクワット', 'オーバーヘッドスクワット', 'レッグプレス', 'ランジ', 'オーバーヘッドランジ', 'ダンベルランジ→ステップアップ', 'ステップアップ', 'ブルガリアンスクワット', 'レッグカール', 'レッグエクステンション', 'カーフレイズ'] },
+  { category: '脚', items: ['スクワット', 'バックスクワット', 'フロントスクワット', 'オーバーヘッドスクワット', 'レッグプレス', 'ランジ', 'オーバーヘッドランジ', 'ダンベルランジ→ステップアップ', 'ステップアップ', 'ブルガリアンスクワット', 'レッグカール', 'レッグエクステンション', 'カーフレイズ', 'Hammer Strength Select Seated Leg Press'] },
   { category: '体幹', items: ['プランク', 'クランチ', 'ケーブルクランチ', 'ストレッチポール ダイアゴナル', 'ストレッチポール 肘膝クランチ', 'レッグレイズ', 'ロシアンツイスト', 'アブローラー'] },
   { category: '有酸素', items: ['ランニング', 'バイク', '縄跳び', 'バーピー', 'ケトルベルスイング'] },
 ]
@@ -63,5 +63,18 @@ export const EXERCISE_ALIASES: Record<string, string> = {
   BSQ: 'バックスクワット', OHSQ: 'オーバーヘッドスクワット', OHS: 'オーバーヘッドスクワット', SQ: 'スクワット', FSQ: 'フロントスクワット',
   BP: 'ベンチプレス', DL: 'デッドリフト', RDL: 'ルーマニアンデッドリフト',
   OHP: 'ショルダープレス', LP: 'レッグプレス',
+  // エニタイム（Hammer Strength）の器具。器具のQRコードの機種コードでも引ける
+  'HS-RW': 'Hammer Strength Select Seated Row', HSRW: 'Hammer Strength Select Seated Row',
+  'HS-PD': 'Hammer Strength Select Lat Pulldown', HSPD: 'Hammer Strength Select Lat Pulldown',
+  'HS-SLP': 'Hammer Strength Select Seated Leg Press', HSSLP: 'Hammer Strength Select Seated Leg Press',
+  ISOINCLINE: 'Hammer Strength Iso-Lateral Incline Press', ISOLATERALINCLINEPRESS: 'Hammer Strength Iso-Lateral Incline Press',
 }
+
+/** 有酸素（ウォーキング等）の種類 */
+export const ACTIVITY_KINDS = [
+  { id: 'walk', label: 'ウォーキング', icon: '🚶' },
+  { id: 'run', label: 'ランニング', icon: '🏃' },
+  { id: 'bike', label: 'バイク', icon: '🚴' },
+] as const
+export const activityMeta = (k: string) => ACTIVITY_KINDS.find((a) => a.id === k) ?? ACTIVITY_KINDS[0]
 export const resolveAlias = (q: string) => EXERCISE_ALIASES[q.trim().toUpperCase()]

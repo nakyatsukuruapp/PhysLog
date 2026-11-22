@@ -5,7 +5,7 @@ import { Seg } from '../components/ui'
 import { addDays, sessionVolume, todayKey } from '../lib/format'
 import { isLowerBetter } from '../lib/presets'
 
-type Metric = 'weight' | 'bodyFat' | 'muscle' | 'lbm' | 'volume' | 'lift' | 'ability' | 'sleep' | 'condition'
+type Metric = 'weight' | 'bodyFat' | 'muscle' | 'lbm' | 'volume' | 'lift' | 'ability' | 'sleep' | 'condition' | 'walkMin' | 'walkKm' | 'steps'
 const METRICS: { id: Metric; label: string; color: string; unit: string }[] = [
   { id: 'weight', label: '体重', color: '#0087ff', unit: 'kg' },
   { id: 'bodyFat', label: '体脂肪率', color: '#ff9500', unit: '%' },
@@ -16,6 +16,9 @@ const METRICS: { id: Metric; label: string; color: string; unit: string }[] = [
   { id: 'ability', label: '身体能力', color: '#eab308', unit: '' },
   { id: 'sleep', label: '睡眠', color: '#6366f1', unit: '時間' },
   { id: 'condition', label: '体調', color: '#22c55e', unit: '' },
+  { id: 'walkMin', label: '有酸素の時間', color: '#14b8a6', unit: '分' },
+  { id: 'walkKm', label: '有酸素の距離', color: '#0ea5e9', unit: 'km' },
+  { id: 'steps', label: '歩数', color: '#84cc16', unit: '歩' },
 ]
 type Period = '30' | '90' | '180' | '365' | 'all'
 
@@ -66,11 +69,14 @@ export function Graph() {
       case 'ability': d.abilities.filter((a) => a.type === aType).forEach((a) => put(a.date, a.value)); break
       case 'sleep': d.conditions.forEach((c) => put(c.date, c.sleep)); break
       case 'condition': d.conditions.forEach((c) => put(c.date, c.condition)); break
+      case 'walkMin': d.activities.forEach((a) => put(a.date, a.minutes, 'sum')); break
+      case 'walkKm': d.activities.forEach((a) => put(a.date, a.distance, 'sum')); break
+      case 'steps': d.activities.forEach((a) => put(a.date, a.steps, 'sum')); break
     }
     return [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, value]) => ({ date, value }))
   }, [d, metric, period, aType, ex, liftMode])
 
-  const digits = unit === '秒' ? 2 : 1
+  const digits = unit === '秒' || unit === 'km' ? 2 : unit === '歩' || unit === '分' ? 0 : 1
   const vs = series.map((s) => s.value)
   const first = vs[0], last = vs[vs.length - 1]
   const change = vs.length > 1 ? last - first : undefined

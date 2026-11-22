@@ -1,14 +1,15 @@
 import { useMemo, useState } from 'react'
 import { useData } from '../store'
 import type { Editing } from './Today'
-import { abilityIcon } from '../lib/presets'
-import { durationLabel, labelDate, minutesBetween, num, sessionVolume, setsSummary } from '../lib/format'
+import { abilityIcon, activityMeta } from '../lib/presets'
+import { activitySummary, sleepLabel, durationLabel, labelDate, minutesBetween, num, sessionVolume, setsSummary } from '../lib/format'
 import { CONDITION_LABELS } from '../lib/presets'
 
-type Filter = 'all' | 'training' | 'body' | 'ability' | 'condition'
+type Filter = 'all' | 'training' | 'activity' | 'body' | 'ability' | 'condition'
 const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all', label: 'すべて' },
   { id: 'training', label: '🏋️ トレーニング' },
+  { id: 'activity', label: '🚶 有酸素' },
   { id: 'body', label: '⚖️ 身体測定' },
   { id: 'ability', label: '⚡ 身体能力' },
   { id: 'condition', label: '😊 コンディション' },
@@ -28,9 +29,15 @@ export function History(props: { onEdit: (e: Editing) => void }) {
       for (const s of d.sessions)
         rows.push({
           date: s.date, key: s.id, edit: { kind: 'training', date: s.date, item: s }, icon: '🏋️',
-          title: (s.sport || 'トレーニング') + (s.start && s.end ? `（${s.start}〜${s.end}・${durationLabel(minutesBetween(s.start, s.end))}）` : ''),
+          title: (s.sport || 'トレーニング') + (s.start && s.end ? `（${s.start}〜${s.end}・${durationLabel(minutesBetween(s.start, s.end))}）` : '') + (s.place ? `・${s.place}` : ''),
           detail: s.exercises.map((x) => `${x.name} ${setsSummary(x.sets)}`).join('\n') + (s.memo ? `\n${s.memo}` : ''),
           right: sessionVolume(s) ? `${Math.round(sessionVolume(s)).toLocaleString()}kg` : undefined,
+        })
+    if (filter === 'all' || filter === 'activity')
+      for (const a of d.activities)
+        rows.push({
+          date: a.date, key: a.id, edit: { kind: 'activity', date: a.date, item: a }, icon: activityMeta(a.kind).icon,
+          title: activityMeta(a.kind).label, detail: [activitySummary(a), a.memo].filter(Boolean).join('\n'),
         })
     if (filter === 'all' || filter === 'body')
       for (const b of d.bodies)
@@ -48,7 +55,7 @@ export function History(props: { onEdit: (e: Editing) => void }) {
       for (const c of d.conditions)
         rows.push({
           date: c.date, key: c.id, edit: { kind: 'condition', date: c.date, item: c }, icon: '😊', title: 'コンディション',
-          detail: [c.condition && `体調 ${CONDITION_LABELS[c.condition - 1]}`, c.fatigue && `疲労 ${c.fatigue}`, c.sleep != null && `睡眠 ${c.sleep}h`, c.memo].filter(Boolean).join('・'),
+          detail: [c.condition && `体調 ${CONDITION_LABELS[c.condition - 1]}`, c.fatigue && `疲労 ${c.fatigue}`, c.sleep != null && `睡眠 ${sleepLabel(c.sleep)}${c.bedtime ? `（${c.bedtime}〜${c.wake}）` : ''}`, c.memo].filter(Boolean).join('・'),
         })
     const query = q.trim()
     const filtered = query ? rows.filter((r) => (r.title + r.detail).includes(query)) : rows
