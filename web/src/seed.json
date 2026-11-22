@@ -389,7 +389,9 @@
             }
           ]
         }
-      ]
+      ],
+      "start": "21:00",
+      "end": "22:00"
     },
     {
       "id": "20261122-katsura-1",
@@ -489,7 +491,9 @@
             }
           ]
         }
-      ]
+      ],
+      "start": "21:00",
+      "end": "22:00"
     }
   ],
   "activeMemberId": "me",
@@ -521,5 +525,35 @@
   ],
   "removedMemoLines": [
     "ストレッチポール ダイアゴナル：対角（肘と膝）と同側の2パターン、各30秒"
+  ],
+  "activities": [
+    {
+      "id": "20261122-katsura-walk",
+      "memberId": "katsura",
+      "date": "2026-11-22",
+      "kind": "walk",
+      "start": "21:26",
+      "minutes": 20,
+      "distance": 2.0,
+      "steps": 2141,
+      "calories": 175,
+      "avgHr": 128,
+      "maxHr": 171,
+      "climb": 37,
+      "memo": "トレッドミル（エニタイム・Life Fitness）。時間・距離・カロリー・上昇はマシン、歩数・心拍は Redmi Watch 5（16分・1.74km）"
+    },
+    {
+      "id": "20261122-me-bike",
+      "memberId": "me",
+      "date": "2026-11-22",
+      "kind": "bike",
+      "start": "21:33",
+      "minutes": 18,
+      "distance": 5.95,
+      "calories": 126,
+      "avgHr": 95,
+      "maxHr": 100,
+      "memo": "Life Fitness バイク。平均19.9km/h・67rpm・70W・4.8メッツ（アクティブ99kcal）"
+    }
   ]
 }

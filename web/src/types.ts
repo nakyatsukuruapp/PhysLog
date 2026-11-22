@@ -104,6 +104,11 @@ export interface Activity {
   minutes?: number
   distance?: number // km
   steps?: number
+  /** 消費カロリー（kcal）・心拍（平均・最大）・上昇（m）。マシンや時計の値。任意 */
+  calories?: number
+  avgHr?: number
+  maxHr?: number
+  climb?: number
   memo: string
 }
 

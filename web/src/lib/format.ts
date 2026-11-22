@@ -109,6 +109,7 @@ export const hoursAcrossMidnight = (from: string, to: string) => {
   return Math.round((d / 60) * 100) / 100
 }
 
-export const activitySummary = (a: { minutes?: number; distance?: number; steps?: number; start?: string }) =>
-  [a.start, a.minutes != null && durationLabel(a.minutes), a.distance != null && `${num(a.distance, 2)}km`, a.steps != null && `${a.steps.toLocaleString()}歩`]
+export const activitySummary = (a: { minutes?: number; distance?: number; steps?: number; start?: string; calories?: number; avgHr?: number }) =>
+  [a.start, a.minutes != null && durationLabel(a.minutes), a.distance != null && `${num(a.distance, 2)}km`, a.steps != null && `${a.steps.toLocaleString()}歩`,
+    a.calories != null && `${a.calories}kcal`, a.avgHr != null && `心拍${a.avgHr}`]
     .filter(Boolean).join('・')

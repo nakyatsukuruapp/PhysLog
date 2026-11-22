@@ -9,6 +9,7 @@ import { Photos } from './screens/Photos'
 import { Settings } from './screens/Settings'
 import { ToastHost, toast } from './components/ui'
 import { autoSync } from './lib/health'
+import { startAutoSync } from './lib/sync'
 import { TimerMini, TimerPanel } from './components/Timer'
 
 type Tab = 'today' | 'history' | 'graph' | 'photos' | 'insights' | 'menu' | 'settings'
@@ -45,6 +46,7 @@ export function App() {
   const cur = TABS.find((t) => t.id === tab) ?? TABS[0]
 
   // アプリ版：開いたとき・戻ってきたときにヘルスケアを取り込む（1時間に1回まで）
+  useEffect(() => { startAutoSync() }, [])
   useEffect(() => {
     const run = () => autoSync(actions.getState()).then((r) => { if (r && (r.days || r.workouts || r.bodies)) toast('ヘルスケアを取り込みました') }).catch(() => {})
     run()

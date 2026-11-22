@@ -47,8 +47,10 @@ function load(): AppData {
       const s = removed.length || rmMemo.some((l) => s0.memo.includes(l))
         ? { ...s0, exercises: s0.exercises.filter((e) => !removed.includes(e.id)), memo: s0.memo.split('\n').filter((l) => !rmMemo.includes(l)).join('\n') }
         : s0
-      const src = seed.sessions?.find((x) => x.id === s.id)
+      let src = seed.sessions?.find((x) => x.id === s.id)
       if (!src) return s
+      // 後から分かった時刻・場所は、空いていれば入れる
+      if ((!s.start && src.start) || (!s.place && src.place)) { s.start ??= src.start; s.end ??= src.end; s.place ??= src.place; src = { ...src } }
       const add = src.exercises.filter((e) => !done.has(e.id) && !s.exercises.some((x) => x.id === e.id))
       const memoLines = src.memo.split('\n').filter((l) => l && !done.has('memo:' + l) && !s.memo.includes(l))
       if (!add.length && !memoLines.length) return s
@@ -119,7 +121,32 @@ function scope(s: AppData): AppData {
   }
 }
 
-function commit(next: AppData) {
+// ───── 同期用：どの記録が変わったかを外（lib/sync.ts）へ知らせる ─────
+export const SYNC_COLS = ['members', 'sessions', 'bodies', 'abilities', 'conditions', 'photos', 'activities'] as const
+export type SyncCol = (typeof SYNC_COLS)[number] | 'profile'
+export interface Change { col: SyncCol; id: string }
+let changeListener: ((c: Change[]) => void) | null = null
+export const setChangeListener = (f: ((c: Change[]) => void) | null) => { changeListener = f }
+
+function diff(prev: AppData, next: AppData): Change[] {
+  const out: Change[] = []
+  for (const col of SYNC_COLS) {
+    const a = prev[col] as { id: string }[], b = next[col] as { id: string }[]
+    if (a === b) continue
+    const am = new Map(a.map((x) => [x.id, x]))
+    const bm = new Map(b.map((x) => [x.id, x]))
+    for (const [id, x] of bm) { const o = am.get(id); if (o !== x && JSON.stringify(o) !== JSON.stringify(x)) out.push({ col, id }) }
+    for (const id of am.keys()) if (!bm.has(id)) out.push({ col, id })
+  }
+  if (JSON.stringify(prev.profile) !== JSON.stringify(next.profile)) out.push({ col: 'profile', id: 'profile' })
+  return out
+}
+
+function commit(next: AppData, remote = false) {
+  if (!remote && changeListener) {
+    const ch = diff(state, next)
+    if (ch.length) queueMicrotask(() => changeListener?.(ch))
+  }
   state = next
   view = scope(next)
   try {
@@ -217,4 +244,40 @@ export const actions = {
     commit({ ...state, bodies: keep(state.bodies), abilities: keep(state.abilities), sessions: keep(state.sessions), conditions: keep(state.conditions), photos: keep(state.photos), activities: keep(state.activities) })
   },
   getState: () => state,
+
+  /** 同期：サーバーから来た記録を反映する（送信キューには積まない） */
+  applyRemote: (rows: { collection: string; id: string; data: unknown; deleted: boolean }[]) => {
+    if (!rows.length) return
+    const next: AppData = { ...state }
+    for (const r of rows) {
+      if (r.collection === 'profile') { if (!r.deleted && r.data) next.profile = r.data as AppData['profile']; continue }
+      const col = r.collection as (typeof SYNC_COLS)[number]
+      if (!SYNC_COLS.includes(col)) continue
+      const list = [...(next[col] as { id: string }[])]
+      const i = list.findIndex((x) => x.id === r.id)
+      if (r.deleted) { if (i >= 0) list.splice(i, 1) }
+      else if (i >= 0) list[i] = r.data as { id: string }
+      else list.push(r.data as { id: string })
+      ;(next as unknown as Record<string, unknown>)[col] = list
+    }
+    if (!next.members.length) next.members = empty().members
+    if (!next.members.some((m) => m.id === next.activeMemberId)) next.activeMemberId = next.members[0].id
+    commit(next, true)
+  },
+
+  /** 同期の初回：メンバーIDを付け替える（端末ごとに同じ "me" があるとぶつかるため）。記録の memberId も付け替える */
+  remapMembers: (map: Map<string, string>, remoteMembers: Member[] = []) => {
+    if (!map.size && !remoteMembers.length) return
+    const re = (id?: string) => { const k = id ?? DEFAULT_MEMBER; return map.get(k) ?? k }
+    const fix = <T extends { memberId?: string }>(l: T[]) => l.map((x) => ({ ...x, memberId: re(x.memberId) }))
+    const members: Member[] = []
+    for (const m of [...state.members.map((m) => ({ ...m, id: re(m.id) })), ...remoteMembers]) if (!members.some((x) => x.id === m.id)) members.push(m)
+    commit({
+      ...state,
+      members,
+      activeMemberId: re(state.activeMemberId),
+      bodies: fix(state.bodies), abilities: fix(state.abilities), sessions: fix(state.sessions),
+      conditions: fix(state.conditions), photos: fix(state.photos), activities: fix(state.activities),
+    }, true)
+  },
 }

@@ -5,6 +5,7 @@ import { ConfirmButton, toast } from '../components/ui'
 import { makeSample } from '../lib/sample'
 import { SPORTS, activityMeta } from '../lib/presets'
 import { HealthCard } from '../components/HealthCard'
+import { SyncCard } from '../components/SyncCard'
 import { sessionVolume, todayKey } from '../lib/format'
 
 function download(name: string, text: string, type: string) {
@@ -74,6 +75,8 @@ export function Settings(props: { onOpenMenu: () => void }) {
 
   return (
     <div className="wrap">
+      <SyncCard />
+
       <div className="card">
         <div className="card-h"><h2>記録する人</h2></div>
         {raw.members.map((m) => (
