@@ -494,6 +494,80 @@
       ],
       "start": "21:00",
       "end": "22:00"
+    },
+    {
+      "id": "20261124-me-1",
+      "memberId": "me",
+      "date": "2026-11-24",
+      "sport": "ウェイトトレーニング",
+      "memo": "Machine Shoulder Press：シート4",
+      "exercises": [
+        {
+          "id": "20261124-me-msp-pro",
+          "name": "Machine Shoulder Press (Pronated Grip)",
+          "sets": [
+            {
+              "weight": 40,
+              "reps": 10
+            },
+            {
+              "weight": 40,
+              "reps": 10
+            }
+          ]
+        },
+        {
+          "id": "20261124-me-msp-neu",
+          "name": "Machine Shoulder Press (Neutral Grip)",
+          "sets": [
+            {
+              "weight": 20,
+              "reps": 10
+            },
+            {
+              "weight": 27.5,
+              "reps": 10
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "20261124-katsura-1",
+      "memberId": "katsura",
+      "date": "2026-11-24",
+      "sport": "ウェイトトレーニング",
+      "memo": "Machine Shoulder Press：シート4",
+      "exercises": [
+        {
+          "id": "20261124-katsura-msp-pro",
+          "name": "Machine Shoulder Press (Pronated Grip)",
+          "sets": [
+            {
+              "weight": 25,
+              "reps": 10
+            },
+            {
+              "weight": 25,
+              "reps": 10
+            }
+          ]
+        },
+        {
+          "id": "20261124-katsura-msp-neu",
+          "name": "Machine Shoulder Press (Neutral Grip)",
+          "sets": [
+            {
+              "weight": 20,
+              "reps": 10
+            },
+            {
+              "weight": 20,
+              "reps": 10
+            }
+          ]
+        }
+      ]
     }
   ],
   "activeMemberId": "me",
@@ -505,7 +579,9 @@
     "20261112-ryota-cc",
     "20261112-ryota-spc",
     "20261112-ryota-spd",
-    "20261112-ryota-spd2"
+    "20261112-ryota-spd2",
+    "20261124-katsura-msp",
+    "20261124-me-msp"
   ],
   "bodies": [
     {
@@ -520,6 +596,20 @@
       "memberId": "katsura",
       "date": "2026-11-12",
       "weight": 71,
+      "memo": ""
+    },
+    {
+      "id": "20261124-ryota-body",
+      "memberId": "me",
+      "date": "2026-11-24",
+      "weight": 76.6,
+      "memo": ""
+    },
+    {
+      "id": "20261124-katsura-body",
+      "memberId": "katsura",
+      "date": "2026-11-24",
+      "weight": 72,
       "memo": ""
     }
   ],
