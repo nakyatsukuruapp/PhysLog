@@ -500,7 +500,7 @@
       "memberId": "me",
       "date": "2026-11-24",
       "sport": "ウェイトトレーニング",
-      "memo": "Machine Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：スタート位置1",
+      "memo": "Machine Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1、ダイヤル1（1〜2セット目）→5（3〜4セット目）",
       "exercises": [
         {
           "id": "20261124-me-msp-pro",
@@ -531,7 +531,7 @@
           ]
         },
         {
-          "id": "20261124-me-lfcp",
+          "id": "20261124-me-lfcp2",
           "name": "Life Fitness Insignia Series Chest Press",
           "sets": [
             {
@@ -541,17 +541,26 @@
             {
               "weight": 35,
               "reps": 15
+            },
+            {
+              "weight": 50,
+              "reps": 15
+            },
+            {
+              "weight": 50,
+              "reps": 15
             }
           ]
         }
-      ]
+      ],
+      "place": "エニタイムフィットネス イオンタウン幕張西店"
     },
     {
       "id": "20261124-katsura-1",
       "memberId": "katsura",
       "date": "2026-11-24",
       "sport": "ウェイトトレーニング",
-      "memo": "Machine Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：スタート位置1",
+      "memo": "Machine Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1、ダイヤル1（1〜2セット目）→5（3〜4セット目）",
       "exercises": [
         {
           "id": "20261124-katsura-msp-pro",
@@ -582,9 +591,17 @@
           ]
         },
         {
-          "id": "20261124-katsura-lfcp",
+          "id": "20261124-katsura-lfcp2",
           "name": "Life Fitness Insignia Series Chest Press",
           "sets": [
+            {
+              "weight": 27.5,
+              "reps": 15
+            },
+            {
+              "weight": 27.5,
+              "reps": 15
+            },
             {
               "weight": 27.5,
               "reps": 15
@@ -595,7 +612,8 @@
             }
           ]
         }
-      ]
+      ],
+      "place": "エニタイムフィットネス イオンタウン幕張西店"
     }
   ],
   "activeMemberId": "me",
@@ -609,7 +627,9 @@
     "20261112-ryota-spd",
     "20261112-ryota-spd2",
     "20261124-katsura-msp",
-    "20261124-me-msp"
+    "20261124-me-msp",
+    "20261124-katsura-lfcp",
+    "20261124-me-lfcp"
   ],
   "bodies": [
     {
@@ -642,7 +662,8 @@
     }
   ],
   "removedMemoLines": [
-    "ストレッチポール ダイアゴナル：対角（肘と膝）と同側の2パターン、各30秒"
+    "ストレッチポール ダイアゴナル：対角（肘と膝）と同側の2パターン、各30秒",
+    "Life Fitness Insignia Series Chest Press：スタート位置1"
   ],
   "activities": [
     {
