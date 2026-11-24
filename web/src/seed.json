@@ -500,7 +500,7 @@
       "memberId": "me",
       "date": "2026-11-24",
       "sport": "ウェイトトレーニング",
-      "memo": "Life Fitness Insignia Series Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1、ダイヤル1（1〜2セット目）→5（3〜4セット目）、5〜6セット目は持ち手変更（写真のダイヤルは9）",
+      "memo": "Life Fitness Insignia Series Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1、ダイヤル1（1〜2セット目）→5（3〜4セット目）、5〜6セット目は持ち手変更（写真のダイヤルは9）\nLife Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライのスタート位置2",
       "exercises": [
         {
           "id": "20261124-me-lfsp-pro",
@@ -559,6 +559,24 @@
               "reps": 15
             }
           ]
+        },
+        {
+          "id": "20261124-me-lffly",
+          "name": "Life Fitness Insignia Series Pectoral Fly/Rear Deltoid (Pectoral Fly)",
+          "sets": [
+            {
+              "weight": 50,
+              "reps": 10
+            },
+            {
+              "weight": 50,
+              "reps": 10
+            },
+            {
+              "weight": 50,
+              "reps": 10
+            }
+          ]
         }
       ],
       "place": "エニタイムフィットネス イオンタウン幕張西店"
@@ -568,7 +586,7 @@
       "memberId": "katsura",
       "date": "2026-11-24",
       "sport": "ウェイトトレーニング",
-      "memo": "Life Fitness Insignia Series Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1、ダイヤル1（1〜2セット目）→5（3〜4セット目）、5〜6セット目は持ち手変更（写真のダイヤルは9）",
+      "memo": "Life Fitness Insignia Series Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1、ダイヤル1（1〜2セット目）→5（3〜4セット目）、5〜6セット目は持ち手変更（写真のダイヤルは9）\nLife Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライのスタート位置2",
       "exercises": [
         {
           "id": "20261124-katsura-lfsp-pro",
@@ -625,6 +643,24 @@
             {
               "weight": 20,
               "reps": 15
+            }
+          ]
+        },
+        {
+          "id": "20261124-katsura-lffly",
+          "name": "Life Fitness Insignia Series Pectoral Fly/Rear Deltoid (Pectoral Fly)",
+          "sets": [
+            {
+              "weight": 27.5,
+              "reps": 10
+            },
+            {
+              "weight": 27.5,
+              "reps": 10
+            },
+            {
+              "weight": 27.5,
+              "reps": 10
             }
           ]
         }
