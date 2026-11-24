@@ -500,7 +500,7 @@
       "memberId": "me",
       "date": "2026-11-24",
       "sport": "ウェイトトレーニング",
-      "memo": "Life Fitness Insignia Series Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1、シート1（1〜2セット目）→5（3〜4セット目）→9（5〜6セット目、持ち手変更）\nLife Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライはスタート位置2・シート9、リアはアームをいちばん後ろ・シート5\nLife Fitness Insignia Series Row：シート5",
+      "memo": "Life Fitness Insignia Series Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1、シート1（1〜2セット目）→5（3〜4セット目）→9（5〜6セット目、持ち手変更）\nLife Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライはスタート位置2・シート9、リアはアームをいちばん後ろ・シート5\nLife Fitness Insignia Series Row：シート5\nDiagonal：4種類を各60秒",
       "exercises": [
         {
           "id": "20261124-me-lfsp-pro",
@@ -613,6 +613,33 @@
               "reps": 10
             }
           ]
+        },
+        {
+          "id": "20261124-me-diag",
+          "name": "Diagonal",
+          "sets": [
+            {
+              "sec": 60
+            },
+            {
+              "sec": 60
+            },
+            {
+              "sec": 60
+            },
+            {
+              "sec": 60
+            }
+          ]
+        },
+        {
+          "id": "20261124-me-plank",
+          "name": "Plank",
+          "sets": [
+            {
+              "sec": 60
+            }
+          ]
         }
       ],
       "place": "エニタイムフィットネス イオンタウン幕張西店"
@@ -622,7 +649,7 @@
       "memberId": "katsura",
       "date": "2026-11-24",
       "sport": "ウェイトトレーニング",
-      "memo": "Life Fitness Insignia Series Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1、シート1（1〜2セット目）→5（3〜4セット目）→9（5〜6セット目、持ち手変更）\nLife Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライはスタート位置2・シート9、リアはアームをいちばん後ろ・シート5\nLife Fitness Insignia Series Row：シート5",
+      "memo": "Life Fitness Insignia Series Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1、シート1（1〜2セット目）→5（3〜4セット目）→9（5〜6セット目、持ち手変更）\nLife Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライはスタート位置2・シート9、リアはアームをいちばん後ろ・シート5\nLife Fitness Insignia Series Row：シート5\nDiagonal：4種類を各60秒",
       "exercises": [
         {
           "id": "20261124-katsura-lfsp-pro",
@@ -733,6 +760,33 @@
             {
               "weight": 35,
               "reps": 10
+            }
+          ]
+        },
+        {
+          "id": "20261124-katsura-diag",
+          "name": "Diagonal",
+          "sets": [
+            {
+              "sec": 60
+            },
+            {
+              "sec": 60
+            },
+            {
+              "sec": 60
+            },
+            {
+              "sec": 60
+            }
+          ]
+        },
+        {
+          "id": "20261124-katsura-plank",
+          "name": "Plank",
+          "sets": [
+            {
+              "sec": 60
             }
           ]
         }

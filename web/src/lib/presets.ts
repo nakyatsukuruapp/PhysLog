@@ -45,7 +45,7 @@ export const EXERCISES: { category: string; items: string[] }[] = [
   { category: '肩', items: ['ショルダープレス', 'サイドレイズ', 'フロントレイズ', 'リアレイズ', 'フェイスプル', 'Life Fitness Insignia Series Shoulder Press', 'Life Fitness Insignia Series Shoulder Press (Pronated Grip)', 'Life Fitness Insignia Series Shoulder Press (Neutral Grip)', 'Life Fitness Insignia Series Pectoral Fly/Rear Deltoid (Rear Deltoid, Pronated Grip)'] },
   { category: '腕', items: ['バーベルカール', 'ダンベルカール', 'ハンマーカール', 'プレスダウン', 'ディップス'] },
   { category: '脚', items: ['スクワット', 'バックスクワット', 'フロントスクワット', 'オーバーヘッドスクワット', 'レッグプレス', 'ランジ', 'オーバーヘッドランジ', 'ダンベルランジ→ステップアップ', 'ステップアップ', 'ブルガリアンスクワット', 'レッグカール', 'レッグエクステンション', 'カーフレイズ', 'Hammer Strength Select Seated Leg Press'] },
-  { category: '体幹', items: ['プランク', 'クランチ', 'ケーブルクランチ', 'ストレッチポール ダイアゴナル', 'ストレッチポール 肘膝クランチ', 'レッグレイズ', 'ロシアンツイスト', 'アブローラー'] },
+  { category: '体幹', items: ['プランク', 'クランチ', 'ケーブルクランチ', 'ストレッチポール ダイアゴナル', 'ストレッチポール 肘膝クランチ', 'レッグレイズ', 'ロシアンツイスト', 'アブローラー', 'Diagonal', 'Plank'] },
   { category: '有酸素', items: ['ランニング', 'バイク', '縄跳び', 'バーピー', 'ケトルベルスイング'] },
 ]
 
