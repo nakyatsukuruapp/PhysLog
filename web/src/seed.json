@@ -500,7 +500,7 @@
       "memberId": "me",
       "date": "2026-11-24",
       "sport": "ウェイトトレーニング",
-      "memo": "Life Fitness Insignia Series Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1、シート1（1〜2セット目）→5（3〜4セット目）→9（5〜6セット目）\nLife Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライはスタート位置2・シート9、リアはアームをいちばん後ろ・シート5\nLife Fitness Insignia Series Row：シート5\nDiagonal：4種類を各60秒",
+      "memo": "Life Fitness Insignia Series Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1\nLife Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライはスタート位置2・シート9、リアはアームをいちばん後ろ・シート5\nLife Fitness Insignia Series Row：シート5\nDiagonal：4種類を各60秒",
       "exercises": [
         {
           "id": "20261124-me-lfsp-pro",
@@ -531,8 +531,8 @@
           ]
         },
         {
-          "id": "20261124-me-lfcp3",
-          "name": "Life Fitness Insignia Series Chest Press",
+          "id": "20261124-me-lfcp-s1",
+          "name": "Life Fitness Insignia Series Chest Press (Seat 1)",
           "sets": [
             {
               "weight": 35,
@@ -541,7 +541,13 @@
             {
               "weight": 35,
               "reps": 15
-            },
+            }
+          ]
+        },
+        {
+          "id": "20261124-me-lfcp-s5",
+          "name": "Life Fitness Insignia Series Chest Press (Seat 5)",
+          "sets": [
             {
               "weight": 50,
               "reps": 15
@@ -549,7 +555,13 @@
             {
               "weight": 50,
               "reps": 15
-            },
+            }
+          ]
+        },
+        {
+          "id": "20261124-me-lfcp-s9",
+          "name": "Life Fitness Insignia Series Chest Press (Seat 9)",
+          "sets": [
             {
               "weight": 27.5,
               "reps": 15
@@ -651,7 +663,7 @@
       "memberId": "katsura",
       "date": "2026-11-24",
       "sport": "ウェイトトレーニング",
-      "memo": "Life Fitness Insignia Series Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1、シート1（1〜2セット目）→5（3〜4セット目）→9（5〜6セット目）\nLife Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライはスタート位置2・シート9、リアはアームをいちばん後ろ・シート5\nLife Fitness Insignia Series Row：シート5\nDiagonal：4種類を各60秒",
+      "memo": "Life Fitness Insignia Series Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1\nLife Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライはスタート位置2・シート9、リアはアームをいちばん後ろ・シート5\nLife Fitness Insignia Series Row：シート5\nDiagonal：4種類を各60秒",
       "exercises": [
         {
           "id": "20261124-katsura-lfsp-pro",
@@ -682,8 +694,8 @@
           ]
         },
         {
-          "id": "20261124-katsura-lfcp3",
-          "name": "Life Fitness Insignia Series Chest Press",
+          "id": "20261124-katsura-lfcp-s1",
+          "name": "Life Fitness Insignia Series Chest Press (Seat 1)",
           "sets": [
             {
               "weight": 27.5,
@@ -692,7 +704,13 @@
             {
               "weight": 27.5,
               "reps": 15
-            },
+            }
+          ]
+        },
+        {
+          "id": "20261124-katsura-lfcp-s5",
+          "name": "Life Fitness Insignia Series Chest Press (Seat 5)",
+          "sets": [
             {
               "weight": 27.5,
               "reps": 15
@@ -700,7 +718,13 @@
             {
               "weight": 27.5,
               "reps": 15
-            },
+            }
+          ]
+        },
+        {
+          "id": "20261124-katsura-lfcp-s9",
+          "name": "Life Fitness Insignia Series Chest Press (Seat 9)",
+          "sets": [
             {
               "weight": 20,
               "reps": 15
@@ -823,7 +847,9 @@
     "20261124-me-lfrd-neu",
     "20261124-katsura-lfrd-neu",
     "20261124-katsura-lfrw",
-    "20261124-me-lfrw"
+    "20261124-me-lfrw",
+    "20261124-me-lfcp3",
+    "20261124-katsura-lfcp3"
   ],
   "bodies": [
     {
@@ -864,7 +890,8 @@
     "Life Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライのスタート位置2",
     "Life Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライのスタート位置2、シート9",
     "Life Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライはスタート位置2・シート9、リアはシート5",
-    "Life Fitness Insignia Series Chest Press：持ち手ピン1、シート1（1〜2セット目）→5（3〜4セット目）→9（5〜6セット目、持ち手変更）"
+    "Life Fitness Insignia Series Chest Press：持ち手ピン1、シート1（1〜2セット目）→5（3〜4セット目）→9（5〜6セット目、持ち手変更）",
+    "Life Fitness Insignia Series Chest Press：持ち手ピン1、シート1（1〜2セット目）→5（3〜4セット目）→9（5〜6セット目）"
   ],
   "activities": [
     {
