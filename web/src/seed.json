@@ -500,7 +500,7 @@
       "memberId": "me",
       "date": "2026-11-24",
       "sport": "ウェイトトレーニング",
-      "memo": "Life Fitness Insignia Series Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1、シート1（1〜2セット目）→5（3〜4セット目）→9（5〜6セット目、持ち手変更）\nLife Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライはスタート位置2・シート9、リアはシート5",
+      "memo": "Life Fitness Insignia Series Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1、シート1（1〜2セット目）→5（3〜4セット目）→9（5〜6セット目、持ち手変更）\nLife Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライはスタート位置2・シート9、リアはアームをいちばん後ろ・シート5",
       "exercises": [
         {
           "id": "20261124-me-lfsp-pro",
@@ -579,8 +579,8 @@
           ]
         },
         {
-          "id": "20261124-me-lfrd-neu",
-          "name": "Life Fitness Insignia Series Pectoral Fly/Rear Deltoid (Rear Deltoid, Neutral Grip)",
+          "id": "20261124-me-lfrd-pro",
+          "name": "Life Fitness Insignia Series Pectoral Fly/Rear Deltoid (Rear Deltoid, Pronated Grip)",
           "sets": [
             {
               "weight": 35,
@@ -604,7 +604,7 @@
       "memberId": "katsura",
       "date": "2026-11-24",
       "sport": "ウェイトトレーニング",
-      "memo": "Life Fitness Insignia Series Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1、シート1（1〜2セット目）→5（3〜4セット目）→9（5〜6セット目、持ち手変更）\nLife Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライはスタート位置2・シート9、リアはシート5",
+      "memo": "Life Fitness Insignia Series Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1、シート1（1〜2セット目）→5（3〜4セット目）→9（5〜6セット目、持ち手変更）\nLife Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライはスタート位置2・シート9、リアはアームをいちばん後ろ・シート5",
       "exercises": [
         {
           "id": "20261124-katsura-lfsp-pro",
@@ -683,8 +683,8 @@
           ]
         },
         {
-          "id": "20261124-katsura-lfrd-neu",
-          "name": "Life Fitness Insignia Series Pectoral Fly/Rear Deltoid (Rear Deltoid, Neutral Grip)",
+          "id": "20261124-katsura-lfrd-pro",
+          "name": "Life Fitness Insignia Series Pectoral Fly/Rear Deltoid (Rear Deltoid, Pronated Grip)",
           "sets": [
             {
               "weight": 20,
@@ -725,7 +725,9 @@
     "20261124-katsura-msp-pro",
     "20261124-katsura-msp-neu",
     "20261124-me-lffly",
-    "20261124-katsura-lffly"
+    "20261124-katsura-lffly",
+    "20261124-me-lfrd-neu",
+    "20261124-katsura-lfrd-neu"
   ],
   "bodies": [
     {
@@ -764,7 +766,8 @@
     "Machine Shoulder Press：シート4",
     "Life Fitness Insignia Series Chest Press：持ち手ピン1、ダイヤル1（1〜2セット目）→5（3〜4セット目）、5〜6セット目は持ち手変更（写真のダイヤルは9）",
     "Life Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライのスタート位置2",
-    "Life Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライのスタート位置2、シート9"
+    "Life Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライのスタート位置2、シート9",
+    "Life Fitness Insignia Series Pectoral Fly/Rear Deltoid：フライはスタート位置2・シート9、リアはシート5"
   ],
   "activities": [
     {
