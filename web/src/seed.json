@@ -500,11 +500,11 @@
       "memberId": "me",
       "date": "2026-11-24",
       "sport": "ウェイトトレーニング",
-      "memo": "Machine Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1、ダイヤル1（1〜2セット目）→5（3〜4セット目）、5〜6セット目は持ち手変更（写真のダイヤルは9）",
+      "memo": "Life Fitness Insignia Series Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1、ダイヤル1（1〜2セット目）→5（3〜4セット目）、5〜6セット目は持ち手変更（写真のダイヤルは9）",
       "exercises": [
         {
-          "id": "20261124-me-msp-pro",
-          "name": "Machine Shoulder Press (Pronated Grip)",
+          "id": "20261124-me-lfsp-pro",
+          "name": "Life Fitness Insignia Series Shoulder Press (Pronated Grip)",
           "sets": [
             {
               "weight": 40,
@@ -517,8 +517,8 @@
           ]
         },
         {
-          "id": "20261124-me-msp-neu",
-          "name": "Machine Shoulder Press (Neutral Grip)",
+          "id": "20261124-me-lfsp-neu",
+          "name": "Life Fitness Insignia Series Shoulder Press (Neutral Grip)",
           "sets": [
             {
               "weight": 20,
@@ -568,11 +568,11 @@
       "memberId": "katsura",
       "date": "2026-11-24",
       "sport": "ウェイトトレーニング",
-      "memo": "Machine Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1、ダイヤル1（1〜2セット目）→5（3〜4セット目）、5〜6セット目は持ち手変更（写真のダイヤルは9）",
+      "memo": "Life Fitness Insignia Series Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：持ち手ピン1、ダイヤル1（1〜2セット目）→5（3〜4セット目）、5〜6セット目は持ち手変更（写真のダイヤルは9）",
       "exercises": [
         {
-          "id": "20261124-katsura-msp-pro",
-          "name": "Machine Shoulder Press (Pronated Grip)",
+          "id": "20261124-katsura-lfsp-pro",
+          "name": "Life Fitness Insignia Series Shoulder Press (Pronated Grip)",
           "sets": [
             {
               "weight": 25,
@@ -585,8 +585,8 @@
           ]
         },
         {
-          "id": "20261124-katsura-msp-neu",
-          "name": "Machine Shoulder Press (Neutral Grip)",
+          "id": "20261124-katsura-lfsp-neu",
+          "name": "Life Fitness Insignia Series Shoulder Press (Neutral Grip)",
           "sets": [
             {
               "weight": 20,
@@ -647,7 +647,11 @@
     "20261124-katsura-lfcp",
     "20261124-me-lfcp",
     "20261124-katsura-lfcp2",
-    "20261124-me-lfcp2"
+    "20261124-me-lfcp2",
+    "20261124-me-msp-pro",
+    "20261124-me-msp-neu",
+    "20261124-katsura-msp-pro",
+    "20261124-katsura-msp-neu"
   ],
   "bodies": [
     {
@@ -682,7 +686,8 @@
   "removedMemoLines": [
     "ストレッチポール ダイアゴナル：対角（肘と膝）と同側の2パターン、各30秒",
     "Life Fitness Insignia Series Chest Press：スタート位置1",
-    "Life Fitness Insignia Series Chest Press：持ち手ピン1、ダイヤル1（1〜2セット目）→5（3〜4セット目）"
+    "Life Fitness Insignia Series Chest Press：持ち手ピン1、ダイヤル1（1〜2セット目）→5（3〜4セット目）",
+    "Machine Shoulder Press：シート4"
   ],
   "activities": [
     {
