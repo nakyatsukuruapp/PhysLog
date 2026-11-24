@@ -128,6 +128,10 @@ export interface Change { col: SyncCol; id: string }
 let changeListener: ((c: Change[]) => void) | null = null
 export const setChangeListener = (f: ((c: Change[]) => void) | null) => { changeListener = f }
 
+// 同期の初回に人のIDを付け替えたとき、IDを覚えているほかの設定（ヘルスケア連携の取り込み先など）へ知らせる
+const remapListeners = new Set<(map: Map<string, string>) => void>()
+export const onMemberRemap = (f: (map: Map<string, string>) => void) => { remapListeners.add(f); return () => { remapListeners.delete(f) } }
+
 function diff(prev: AppData, next: AppData): Change[] {
   const out: Change[] = []
   for (const col of SYNC_COLS) {
@@ -268,8 +272,16 @@ export const actions = {
   /** 同期の初回：メンバーIDを付け替える（端末ごとに同じ "me" があるとぶつかるため）。記録の memberId も付け替える */
   remapMembers: (map: Map<string, string>, remoteMembers: Member[] = []) => {
     if (!map.size && !remoteMembers.length) return
+    if (map.size) remapListeners.forEach((f) => f(map))
     const re = (id?: string) => { const k = id ?? DEFAULT_MEMBER; return map.get(k) ?? k }
-    const fix = <T extends { memberId?: string }>(l: T[]) => l.map((x) => ({ ...x, memberId: re(x.memberId) }))
+    // ヘルスケアから取り込んだ記録は、IDに「誰の記録か」が入っている（hc:<人>:<日付> など。lib/health.ts）。
+    // どの端末でも最初は同じ "me" なので、人のIDを付け替えたら記録のIDも合わせる（別の人の同じ日の記録とぶつからないように）
+    const reId = (id: string) => {
+      const m = /^(hc:bike|hc|hb):(.+):(\d{4}-\d{2}-\d{2})$/.exec(id)
+      const to = m ? map.get(m[2]) : undefined
+      return m && to ? `${m[1]}:${to}:${m[3]}` : id
+    }
+    const fix = <T extends { id: string; memberId?: string }>(l: T[]) => l.map((x) => ({ ...x, id: reId(x.id), memberId: re(x.memberId) }))
     const members: Member[] = []
     for (const m of [...state.members.map((m) => ({ ...m, id: re(m.id) })), ...remoteMembers]) if (!members.some((x) => x.id === m.id)) members.push(m)
     commit({

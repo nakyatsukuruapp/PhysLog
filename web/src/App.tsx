@@ -9,7 +9,7 @@ import { Photos } from './screens/Photos'
 import { Settings } from './screens/Settings'
 import { ToastHost, toast } from './components/ui'
 import { autoSync } from './lib/health'
-import { startAutoSync } from './lib/sync'
+import { startAutoSync, useSyncState } from './lib/sync'
 import { TimerMini, TimerPanel } from './components/Timer'
 
 type Tab = 'today' | 'history' | 'graph' | 'photos' | 'insights' | 'menu' | 'settings'
@@ -25,6 +25,9 @@ const TABS: { id: Tab; label: string; icon: string; title: string }[] = [
 
 function MemberSwitch() {
   const d = useRawData()
+  const sync = useSyncState()
+  // 本人として参加中は、自分の記録だけを扱う
+  if (sync.workspaceId && sync.role === 'client') return null
   if (d.members.length < 2) return null
   return (
     <select

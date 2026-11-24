@@ -6,7 +6,7 @@
 
 import { Capacitor } from '@capacitor/core'
 import type { HealthDataType, HealthSample, Workout } from '@capgo/capacitor-health'
-import { actions } from '../store'
+import { actions, onMemberRemap } from '../store'
 import type { Activity, ActivityKind, AppData, BodyMeasurement, ConditionRecord, HealthSync } from '../types'
 import { addDays, toKey, todayKey } from './format'
 
@@ -19,6 +19,13 @@ export const loadSync = (): HealthSync => {
   try { return JSON.parse(localStorage.getItem(KEY) ?? '') as HealthSync } catch { return { connected: false } }
 }
 const saveSync = (s: HealthSync) => { try { localStorage.setItem(KEY, JSON.stringify(s)) } catch { /* 無視 */ } }
+
+// 同期の初回に人のIDが付け替わったら、取り込み先も新しいIDに合わせる（古いIDのままだと、誰のものでもない記録になる）
+onMemberRemap((map) => {
+  const s = loadSync()
+  const to = s.memberId ? map.get(s.memberId) : undefined
+  if (to) saveSync({ ...s, memberId: to })
+})
 
 export const isNative = () => Capacitor.isNativePlatform()
 export const platformName = () => (Capacitor.getPlatform() === 'android' ? 'Health Connect' : 'ヘルスケア')

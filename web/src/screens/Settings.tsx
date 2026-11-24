@@ -6,6 +6,7 @@ import { makeSample } from '../lib/sample'
 import { SPORTS, activityMeta } from '../lib/presets'
 import { HealthCard } from '../components/HealthCard'
 import { SyncCard } from '../components/SyncCard'
+import { useSyncState } from '../lib/sync'
 import { sessionVolume, todayKey } from '../lib/format'
 
 function download(name: string, text: string, type: string) {
@@ -58,6 +59,9 @@ export function Settings(props: { onOpenMenu: () => void }) {
   const file = useRef<HTMLInputElement>(null)
   const [newName, setNewName] = useState('')
   const [paste, setPaste] = useState('')
+  const sync = useSyncState()
+  // 本人として参加中は、自分の記録だけを扱う（人の追加・切り替え・削除は出さない）
+  const isClient = !!sync.workspaceId && sync.role === 'client'
   const active = raw.members.find((m) => m.id === raw.activeMemberId)!
   const count = (id: string) =>
     [raw.bodies, raw.abilities, raw.sessions, raw.conditions, raw.activities].reduce((a, l) => a + l.filter((x) => (x.memberId ?? 'me') === id).length, 0)
@@ -79,29 +83,42 @@ export function Settings(props: { onOpenMenu: () => void }) {
 
       <div className="card">
         <div className="card-h"><h2>記録する人</h2></div>
-        {raw.members.map((m) => (
-          <div key={m.id} className="list-item">
-            <input
-              value={m.name}
-              onChange={(e) => actions.renameMember(m.id, e.target.value)}
-              style={{ fontWeight: 700, background: 'none', border: 'none', padding: 0 }}
-            />
-            <span className="sub" style={{ whiteSpace: 'nowrap' }}>{count(m.id)}件</span>
-            {m.id === raw.activeMemberId ? (
-              <span className="chip on">選択中</span>
-            ) : (
-              <button className="chip" onClick={() => actions.setActiveMember(m.id)}>切替</button>
-            )}
-            {raw.members.length > 1 && (
-              <ConfirmButton className="chip" label="✕" confirmLabel={`記録${count(m.id)}件ごと削除`} onConfirm={() => actions.deleteMember(m.id)} />
-            )}
-          </div>
-        ))}
-        <div className="row" style={{ marginTop: 10 }}>
-          <input placeholder="名前を追加（例：選手名）" value={newName} onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && newName.trim()) { actions.addMember(newName.trim()); setNewName('') } }} />
-          <button className="btn sm primary" disabled={!newName.trim()} onClick={() => { actions.addMember(newName.trim()); setNewName('') }}>追加</button>
-        </div>
+        {isClient ? (
+          <>
+            <div className="list-item">
+              <b style={{ flex: 1 }}>{active.name}</b>
+              <span className="sub" style={{ whiteSpace: 'nowrap' }}>{count(active.id)}件</span>
+              <span className="chip on">本人</span>
+            </div>
+            <div className="sub" style={{ marginTop: 8, lineHeight: 1.7 }}>本人として参加しているあいだは、自分の記録だけを扱います。名前を変えたいときは、グループの管理者か指導者に頼んでください。</div>
+          </>
+        ) : (
+          <>
+            {raw.members.map((m) => (
+              <div key={m.id} className="list-item">
+                <input
+                  value={m.name}
+                  onChange={(e) => actions.renameMember(m.id, e.target.value)}
+                  style={{ fontWeight: 700, background: 'none', border: 'none', padding: 0 }}
+                />
+                <span className="sub" style={{ whiteSpace: 'nowrap' }}>{count(m.id)}件</span>
+                {m.id === raw.activeMemberId ? (
+                  <span className="chip on">選択中</span>
+                ) : (
+                  <button className="chip" onClick={() => actions.setActiveMember(m.id)}>切替</button>
+                )}
+                {raw.members.length > 1 && (
+                  <ConfirmButton className="chip" label="✕" confirmLabel={`記録${count(m.id)}件ごと削除`} onConfirm={() => actions.deleteMember(m.id)} />
+                )}
+              </div>
+            ))}
+            <div className="row" style={{ marginTop: 10 }}>
+              <input placeholder="名前を追加（例：選手名）" value={newName} onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && newName.trim()) { actions.addMember(newName.trim()); setNewName('') } }} />
+              <button className="btn sm primary" disabled={!newName.trim()} onClick={() => { actions.addMember(newName.trim()); setNewName('') }}>追加</button>
+            </div>
+          </>
+        )}
       </div>
 
       <button className="btn block mobile-only" style={{ marginBottom: 12, background: 'var(--card)', justifyContent: 'flex-start' }} onClick={props.onOpenMenu}>📋 メニュー提案を開く</button>
@@ -138,7 +155,12 @@ export function Settings(props: { onOpenMenu: () => void }) {
 
       <div className="card">
         <div className="card-h"><h2>データ</h2></div>
-        <div className="sub" style={{ marginBottom: 10 }}>記録と写真はこのブラウザの中だけに保存されます（外部には送信しません）。機種変更やバックアップには「書き出し」を使ってください（写真はバックアップに含まれません）。</div>
+        <div className="sub" style={{ marginBottom: 10 }}>
+          {sync.workspaceId
+            ? '記録は、この端末と、同期しているグループのサーバーに保存されます。写真の画像は、この端末の中だけに保存されます。'
+            : '記録と写真はこのブラウザの中だけに保存されます（外部には送信しません）。'}
+          機種変更やバックアップには「書き出し」を使ってください（写真はバックアップに含まれません）。
+        </div>
         <div className="grid2">
           <button className="btn" onClick={() => download(`physlog-${todayKey()}.json`, JSON.stringify(raw, null, 2), 'application/json')}>バックアップ（全員）</button>
           <button className="btn" onClick={() => download(`physlog-${active.name}-${todayKey()}.csv`, toCSV(view, active.name), 'text/csv')}>CSV（{active.name}）</button>

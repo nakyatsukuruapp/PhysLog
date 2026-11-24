@@ -1,7 +1,7 @@
 # PhysLog Web
 
-iOS 版 PhysLog の Web 版（React + Vite + TypeScript、外部ライブラリなし）。
-記録はブラウザの localStorage に保存し、外部へは送信しない。
+iOS 版 PhysLog の Web 版（React + Vite + TypeScript）。
+記録はブラウザの localStorage に保存する。同期（設定 → 同期）を始めたときだけ、サーバー（Supabase）にも保存する。
 
 ## 開発
 
@@ -15,6 +15,17 @@ npm run dev
 
 - `npm run build` … `docs/app/` に出力（GitHub Pages で `/app/` として配信）
 - `npm run build:single` … `dist-single/index.html` に1ファイル版（プレビュー共有用。初回は `src/seed.json` の記録入り）
+
+## 同期と役割
+
+- 同期は `src/lib/sync.ts`。グループごとに役割がある。
+  - 管理者（owner）・指導者（coach）：グループ全員の記録を読み書きできる。人を招く・外すのは管理者だけ。
+  - 本人（client）：自分の記録だけを読み書きできる。
+- だれが何を読み書きできるかは、データベース側（RLS）で決まる。定義は `supabase/migrations/`。
+- 人を招くときは、設定 → 同期 で招待コードを作る。コードは1回きり・期限つき（7日）。
+- テスト（どちらも手元の Postgres を使う。本番には触れない）
+  - `supabase/tests/run_local.sh` … マイグレーションを最初から流し、役割ごとの権限を確かめる
+  - `node tests/sync-roles.test.mjs` … 同期のコードを、端末を何台か再現して通しで確かめる（先に `npm i --no-save pg`）
 
 ## iOS 版からの主な変更
 

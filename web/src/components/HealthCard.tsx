@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import { actions, useRawData } from '../store'
 import { toast } from './ui'
 import { availability, connect, disconnect, isNative, loadSync, openSettings, platformName, syncHealth } from '../lib/health'
+import { useSyncState } from '../lib/sync'
 
 // 設定画面：端末のヘルスケア連携（アプリ版のみ）
 export function HealthCard() {
   const raw = useRawData()
+  const link = useSyncState()
   const [sync, setSync] = useState(loadSync)
   const [avail, setAvail] = useState<{ ok: boolean; reason?: string } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -24,7 +26,9 @@ export function HealthCard() {
     )
   }
 
-  const member = raw.members.find((m) => m.id === (sync.memberId ?? raw.activeMemberId)) ?? raw.members[0]
+  // 本人として参加中は、取り込み先を自分に固定する（ほかの人あての記録は同期されないため）
+  const own = link.workspaceId && link.role === 'client' ? link.memberId : undefined
+  const member = raw.members.find((m) => m.id === (own ?? sync.memberId ?? raw.activeMemberId)) ?? raw.members[0]
   const run = async (days: number) => {
     setBusy(true)
     try {
@@ -52,12 +56,19 @@ export function HealthCard() {
       <div className="card-h"><h2>{name}と連携</h2></div>
       {avail && !avail.ok && <div className="sub" style={{ color: 'var(--orange)', marginBottom: 8 }}>この端末では使えません（{avail.reason ?? '不明'}）{name === 'Health Connect' ? '。Health Connectをインストールしてください' : ''}</div>}
       <p className="sub" style={{ marginTop: 0, lineHeight: 1.7 }}>
-        睡眠・歩数・歩行距離・体重・体脂肪率と、ウォーキング／ランニング／バイクのワークアウトを読み取ります。データは端末の中だけに保存し、外には送りません。
+        睡眠・歩数・歩行距離・体重・体脂肪率と、ウォーキング／ランニング／バイクのワークアウトを読み取ります。
+        {link.workspaceId
+          ? '取り込んだ記録は、ほかの記録と同じように同期されます（グループの管理者と指導者も読めます）。'
+          : 'データは端末の中だけに保存し、外には送りません。'}
       </p>
-      <label className="label">この端末の持ち主（取り込む先）</label>
-      <select value={member.id} onChange={(e) => { const s = { ...sync, memberId: e.target.value }; setSync(s); localStorage.setItem('physlog.health', JSON.stringify(s)) }}>
-        {raw.members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-      </select>
+      {!own && (
+        <>
+          <label className="label">この端末の持ち主（取り込む先）</label>
+          <select value={member.id} onChange={(e) => { const s = { ...sync, memberId: e.target.value }; setSync(s); localStorage.setItem('physlog.health', JSON.stringify(s)) }}>
+            {raw.members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </>
+      )}
       {!sync.connected ? (
         <button className="btn block primary" style={{ marginTop: 12 }} disabled={busy || avail?.ok === false} onClick={start}>{busy ? '連携中…' : `${name}と連携する`}</button>
       ) : (
