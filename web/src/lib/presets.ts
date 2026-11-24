@@ -42,7 +42,7 @@ export const abilityIcon = (name: string) => {
 export const EXERCISES: { category: string; items: string[] }[] = [
   { category: '胸', items: ['ベンチプレス', 'インクラインベンチプレス', 'ダンベルプレス', 'ダンベルフライ', 'チェストプレス', 'プッシュアップ', 'Hammer Strength Iso-Lateral Incline Press', 'Life Fitness Insignia Series Chest Press', 'Life Fitness Insignia Series Pectoral Fly/Rear Deltoid (Pectoral Fly, Neutral Grip)'] },
   { category: '背中', items: ['デッドリフト', '懸垂', 'ラットプルダウン', 'ベントオーバーロウ', 'シーテッドロウ', 'ルーマニアンデッドリフト', 'Hammer Strength Select Seated Row', 'Hammer Strength Select Lat Pulldown'] },
-  { category: '肩', items: ['ショルダープレス', 'サイドレイズ', 'フロントレイズ', 'リアレイズ', 'フェイスプル', 'Life Fitness Insignia Series Shoulder Press', 'Life Fitness Insignia Series Shoulder Press (Pronated Grip)', 'Life Fitness Insignia Series Shoulder Press (Neutral Grip)'] },
+  { category: '肩', items: ['ショルダープレス', 'サイドレイズ', 'フロントレイズ', 'リアレイズ', 'フェイスプル', 'Life Fitness Insignia Series Shoulder Press', 'Life Fitness Insignia Series Shoulder Press (Pronated Grip)', 'Life Fitness Insignia Series Shoulder Press (Neutral Grip)', 'Life Fitness Insignia Series Pectoral Fly/Rear Deltoid (Rear Deltoid, Neutral Grip)'] },
   { category: '腕', items: ['バーベルカール', 'ダンベルカール', 'ハンマーカール', 'プレスダウン', 'ディップス'] },
   { category: '脚', items: ['スクワット', 'バックスクワット', 'フロントスクワット', 'オーバーヘッドスクワット', 'レッグプレス', 'ランジ', 'オーバーヘッドランジ', 'ダンベルランジ→ステップアップ', 'ステップアップ', 'ブルガリアンスクワット', 'レッグカール', 'レッグエクステンション', 'カーフレイズ', 'Hammer Strength Select Seated Leg Press'] },
   { category: '体幹', items: ['プランク', 'クランチ', 'ケーブルクランチ', 'ストレッチポール ダイアゴナル', 'ストレッチポール 肘膝クランチ', 'レッグレイズ', 'ロシアンツイスト', 'アブローラー'] },
