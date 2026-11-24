@@ -561,8 +561,8 @@
           ]
         },
         {
-          "id": "20261124-me-lffly",
-          "name": "Life Fitness Insignia Series Pectoral Fly/Rear Deltoid (Pectoral Fly)",
+          "id": "20261124-me-lffly-neu",
+          "name": "Life Fitness Insignia Series Pectoral Fly/Rear Deltoid (Pectoral Fly, Neutral Grip)",
           "sets": [
             {
               "weight": 50,
@@ -647,8 +647,8 @@
           ]
         },
         {
-          "id": "20261124-katsura-lffly",
-          "name": "Life Fitness Insignia Series Pectoral Fly/Rear Deltoid (Pectoral Fly)",
+          "id": "20261124-katsura-lffly-neu",
+          "name": "Life Fitness Insignia Series Pectoral Fly/Rear Deltoid (Pectoral Fly, Neutral Grip)",
           "sets": [
             {
               "weight": 27.5,
@@ -687,7 +687,9 @@
     "20261124-me-msp-pro",
     "20261124-me-msp-neu",
     "20261124-katsura-msp-pro",
-    "20261124-katsura-msp-neu"
+    "20261124-katsura-msp-neu",
+    "20261124-me-lffly",
+    "20261124-katsura-lffly"
   ],
   "bodies": [
     {
