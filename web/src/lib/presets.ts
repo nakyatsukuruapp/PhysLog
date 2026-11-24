@@ -40,7 +40,7 @@ export const abilityIcon = (name: string) => {
 }
 
 export const EXERCISES: { category: string; items: string[] }[] = [
-  { category: '胸', items: ['ベンチプレス', 'インクラインベンチプレス', 'ダンベルプレス', 'ダンベルフライ', 'チェストプレス', 'プッシュアップ', 'Hammer Strength Iso-Lateral Incline Press'] },
+  { category: '胸', items: ['ベンチプレス', 'インクラインベンチプレス', 'ダンベルプレス', 'ダンベルフライ', 'チェストプレス', 'プッシュアップ', 'Hammer Strength Iso-Lateral Incline Press', 'Life Fitness Insignia Series Chest Press'] },
   { category: '背中', items: ['デッドリフト', '懸垂', 'ラットプルダウン', 'ベントオーバーロウ', 'シーテッドロウ', 'ルーマニアンデッドリフト', 'Hammer Strength Select Seated Row', 'Hammer Strength Select Lat Pulldown'] },
   { category: '肩', items: ['ショルダープレス', 'サイドレイズ', 'フロントレイズ', 'リアレイズ', 'フェイスプル', 'Machine Shoulder Press', 'Machine Shoulder Press (Pronated Grip)', 'Machine Shoulder Press (Neutral Grip)'] },
   { category: '腕', items: ['バーベルカール', 'ダンベルカール', 'ハンマーカール', 'プレスダウン', 'ディップス'] },

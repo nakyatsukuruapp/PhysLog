@@ -500,7 +500,7 @@
       "memberId": "me",
       "date": "2026-11-24",
       "sport": "ウェイトトレーニング",
-      "memo": "Machine Shoulder Press：シート4",
+      "memo": "Machine Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：スタート位置1",
       "exercises": [
         {
           "id": "20261124-me-msp-pro",
@@ -529,6 +529,20 @@
               "reps": 10
             }
           ]
+        },
+        {
+          "id": "20261124-me-lfcp",
+          "name": "Life Fitness Insignia Series Chest Press",
+          "sets": [
+            {
+              "weight": 35,
+              "reps": 15
+            },
+            {
+              "weight": 35,
+              "reps": 15
+            }
+          ]
         }
       ]
     },
@@ -537,7 +551,7 @@
       "memberId": "katsura",
       "date": "2026-11-24",
       "sport": "ウェイトトレーニング",
-      "memo": "Machine Shoulder Press：シート4",
+      "memo": "Machine Shoulder Press：シート4\nLife Fitness Insignia Series Chest Press：スタート位置1",
       "exercises": [
         {
           "id": "20261124-katsura-msp-pro",
@@ -564,6 +578,20 @@
             {
               "weight": 20,
               "reps": 10
+            }
+          ]
+        },
+        {
+          "id": "20261124-katsura-lfcp",
+          "name": "Life Fitness Insignia Series Chest Press",
+          "sets": [
+            {
+              "weight": 27.5,
+              "reps": 15
+            },
+            {
+              "weight": 27.5,
+              "reps": 15
             }
           ]
         }
