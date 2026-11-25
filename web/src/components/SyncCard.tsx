@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import { ConfirmButton, toast } from './ui'
 import { useRawData } from '../store'
 import {
-  ROLE_LABEL, clearNotice, createInvite, createWorkspace, inviteInfo, joinWorkspace, leaveWorkspace, listInvites, listPeople,
+  ROLE_LABEL, clearNotice, createInvite, createWorkspace, inviteInfo, joinWorkspace, leaveWorkspace, linkedMemberIds, listInvites, listPeople,
   myWorkspaces, removePerson, resumeWorkspace, revokeInvite, sb, session, signIn, signOut, signUp, syncNow, unlink, useSyncState,
   type Invite, type InviteInfo, type InviteRow, type MyWorkspace, type Person,
 } from '../lib/sync'
@@ -167,40 +167,56 @@ function Linked(props: { email: string; busy: boolean; run: Run }) {
         <div className="sub" style={{ lineHeight: 1.7, marginTop: 8 }}>自分（{me ?? '本人'}）の記録だけを同期しています。グループの管理者と指導者も、この記録を読み書きできます。</div>
       )}
       {st.role === 'coach' && (
-        <div className="sub" style={{ lineHeight: 1.7, marginTop: 8 }}>グループ全員の記録を読み書きできます。人を招く・外すのは、管理者だけができます。</div>
+        <div className="sub" style={{ lineHeight: 1.7, marginTop: 8 }}>グループ全員の記録を読み書きできます。本人を招くこともできます。指導者を招く・人を外すのは、管理者だけができます。</div>
       )}
-      {st.role === 'owner' && <OwnerTools busy={busy} run={run} />}
+      {(st.role === 'owner' || st.role === 'coach') && <StaffTools owner={st.role === 'owner'} busy={busy} run={run} />}
       <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
         <button className="btn sm primary" disabled={busy} onClick={() => run(syncNow, '同期しました')}>{busy ? '同期中…' : '今すぐ同期'}</button>
         <button className="btn sm" onClick={unlink}>この端末の同期を止める</button>
         <button className="btn sm" onClick={() => run(signOut)}>ログアウト</button>
       </div>
-      {(st.role === 'coach' || st.role === 'client') && (
+      {st.role === 'coach' && (
         <ConfirmButton className="btn sm danger" style={{ marginTop: 10 }} label="このグループから抜ける"
-          confirmLabel="もう一度押すと抜けます（記録はグループに残ります）" onConfirm={() => { run(leaveWorkspace, 'グループから抜けました') }} />
+          confirmLabel="もう一度押すと抜けます（記録はグループに残ります）" onConfirm={() => { run(() => leaveWorkspace(true), 'グループから抜けました') }} />
+      )}
+      {st.role === 'client' && (
+        <>
+          <label className="label">グループから抜ける</label>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <ConfirmButton className="btn sm" label="記録を残して抜ける" confirmLabel="もう一度押すと抜けます"
+              onConfirm={() => { run(() => leaveWorkspace(true), 'グループから抜けました（記録は残しました）') }} />
+            <ConfirmButton className="btn sm danger" label="記録を消して抜ける" confirmLabel="もう一度押すと、記録を消して抜けます"
+              onConfirm={() => { run(() => leaveWorkspace(false), 'グループから記録を消して抜けました') }} />
+          </div>
+          <div className="sub" style={{ lineHeight: 1.7, marginTop: 8 }}>
+            どちらを選んでも、この端末の記録は残ります。「消して抜ける」では、グループに預けた自分の記録が消え、管理者と指導者の画面からも、次の同期で消えます。相手がすでに書き出したバックアップまでは消せません。
+          </div>
+        </>
       )}
     </>
   )
 }
 
-/** 管理者だけ：人を招く・外す、招待の取り消し */
-function OwnerTools(props: { busy: boolean; run: Run }) {
-  const { busy, run } = props
+/** 管理者・指導者：本人を招く。管理者だけ：指導者を招く、人を外す */
+function StaffTools(props: { owner: boolean; busy: boolean; run: Run }) {
+  const { owner, busy, run } = props
   const raw = useRawData()
   const [people, setPeople] = useState<Person[]>([])
+  const [linked, setLinked] = useState<string[]>([])
   const [invites, setInvites] = useState<InviteRow[]>([])
   const [issued, setIssued] = useState<Invite | null>(null)
   const [target, setTarget] = useState('')
 
   const reload = useCallback(async () => {
-    const [p, i] = await Promise.all([listPeople(), listInvites()])
-    setPeople(p); setInvites(i)
-  }, [])
+    // 参加している人の一覧（メールアドレスつき）は管理者だけ。指導者は、結びつき済みの人だけを知る
+    const [p, ids, i] = await Promise.all([owner ? listPeople() : Promise.resolve<Person[]>([]), owner ? Promise.resolve<string[]>([]) : linkedMemberIds(), listInvites()])
+    setPeople(p); setLinked(ids); setInvites(i)
+  }, [owner])
   useEffect(() => { reload().catch(() => {}) }, [reload])
 
   const nameOf = (id: string | null) => raw.members.find((m) => m.id === id)?.name ?? '（消した人）'
   // まだアカウントが結びついていない人だけ、本人として招ける
-  const taken = new Set(people.map((p) => p.member_id))
+  const taken = new Set<string | null>(owner ? people.map((p) => p.member_id) : linked)
   const free = raw.members.filter((m) => !taken.has(m.id))
   // 誰を招くかは、毎回選んでもらう（その人の記録を見せる相手を決める操作なので、最初から誰かを選んだ状態にしない）
   const pick = free.some((m) => m.id === target) ? target : ''
@@ -222,8 +238,12 @@ function OwnerTools(props: { busy: boolean; run: Run }) {
         <div className="sub">招ける人がいません。下の「記録する人」に名前を足すと、ここに出ます。</div>
       )}
 
-      <label className="label">指導者を招く（グループ全員の記録を読み書きできる）</label>
-      <button className="btn sm" disabled={busy} onClick={() => issue('coach')}>指導者の招待コードを作る</button>
+      {owner && (
+        <>
+          <label className="label">指導者を招く（グループ全員の記録を読み書きでき、本人を招ける）</label>
+          <button className="btn sm" disabled={busy} onClick={() => issue('coach')}>指導者の招待コードを作る</button>
+        </>
+      )}
 
       {issued && (
         <div className="card" style={{ background: 'var(--fill2)', margin: '12px 0 0', padding: 12 }}>
@@ -237,24 +257,28 @@ function OwnerTools(props: { busy: boolean; run: Run }) {
         </div>
       )}
 
-      <label className="label">参加している人</label>
-      {people.map((p) => (
-        <div key={p.user_id} className="list-item">
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <b>{p.role === 'client' ? nameOf(p.member_id) : ROLE_LABEL[p.role]}</b>
-            {p.role === 'client' && <span className="sub">　本人</span>}
-            <div className="sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.email}</div>
-          </div>
-          {p.role !== 'owner' && (
-            <ConfirmButton className="chip" label="外す" confirmLabel="もう一度押すと外します"
-              onConfirm={() => { run(async () => { await removePerson(p.user_id); await reload() }, '外しました（記録はグループに残ります）') }} />
-          )}
-        </div>
-      ))}
+      {owner && (
+        <>
+          <label className="label">参加している人</label>
+          {people.map((p) => (
+            <div key={p.user_id} className="list-item">
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <b>{p.role === 'client' ? nameOf(p.member_id) : ROLE_LABEL[p.role]}</b>
+                {p.role === 'client' && <span className="sub">　本人</span>}
+                <div className="sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.email}</div>
+              </div>
+              {p.role !== 'owner' && (
+                <ConfirmButton className="chip" label="外す" confirmLabel="もう一度押すと外します"
+                  onConfirm={() => { run(async () => { await removePerson(p.user_id); await reload() }, '外しました（記録はグループに残ります）') }} />
+              )}
+            </div>
+          ))}
+        </>
+      )}
 
       {pending.length > 0 && (
         <>
-          <label className="label">招待中（まだ使われていないコード）</label>
+          <label className="label">{owner ? '招待中（まだ使われていないコード）' : '自分が出した招待（まだ使われていないコード）'}</label>
           {pending.map((i) => (
             <div key={i.id} className="list-item">
               <div style={{ flex: 1, minWidth: 0 }}>

@@ -7,8 +7,9 @@
 // - 端末の中の記録（localStorage）はそのまま使えるので、電波がなくても記録できる
 //
 // 役割（グループごと）
-// - owner（管理者）・coach（指導者）：グループ全員の記録を読み書きする
-// - client（本人）：自分の記録だけを読み書きする。人（members）と profile は送らない
+// - owner（管理者）・coach（指導者）：グループ全員の記録を読み書きする。本人を招ける（指導者を招く・人を外すのは管理者だけ）
+// - client（本人）：自分の記録だけを読み書きする。人（members）と profile は送らない。
+//   抜けるときに、自分の記録をグループに残すか消すかを選べる
 // だれが何を読み書きできるかは、サーバー側（RLS。supabase/migrations）で決まる。
 // ここでの絞り込みは、送っても断られるものを最初から送らないためのもの。
 
@@ -31,7 +32,9 @@ export interface SyncState {
   role?: Role
   /** client のとき：この利用者が「記録される人」のうち誰か（Member.id） */
   memberId?: string
+  /** 受け取りの続き：最後に受け取った記録の更新時刻と、その (コレクション, ID) */
   cursor?: string
+  cursorAt?: [string, string]
   lastSync?: string
   outbox: string[]
   linked?: boolean
@@ -141,7 +144,7 @@ export async function joinWorkspace(code: string) {
   const w = await rpc<{ id: string; name: string }>('join_workspace', { code })
   const me = (await myWorkspaces()).find((x) => x.id === w.id)
   if (!me) throw new Error('参加を確かめられませんでした。もう一度お試しください')
-  await link(me)
+  await link(me, true)
 }
 /** すでに入っているグループを、この端末でも使う */
 export const resumeWorkspace = (w: MyWorkspace) => link(w)
@@ -152,13 +155,16 @@ function untouched(s: AppData): boolean {
   return [...RECORD_COLS].every((c) => (s[c as keyof AppData] as unknown[]).length === 0)
 }
 
-/** 端末とグループを結びつける。この端末の記録のうち、サーバーにまだないものを送る（本人は自分の分だけ） */
-async function link(w: MyWorkspace) {
+/**
+ * 端末とグループを結びつける。この端末の記録のうち、サーバーにまだないものを送る（本人は自分の分だけ）。
+ * joined：招待コードで参加した直後（別の端末でのつなぎ直しではない）
+ */
+async function link(w: MyWorkspace, joined = false) {
   if (w.role === 'client' && !w.member_id) throw new Error('誰の記録かが決まっていません。管理者に招待をやり直してもらってください')
   st = { workspaceId: w.id, workspaceName: w.name, role: w.role, memberId: w.member_id ?? undefined, outbox: [], linked: false }
   save()
   // 1. サーバーにいる人を読む（本人には、自分の1人だけが見える）
-  let remote: Member[], have: Set<string>
+  let remote: Member[], have: Map<string, boolean>
   try {
     const { data: rm, error } = await sb().from('records').select('id,data').eq('workspace_id', w.id).eq('collection', 'members').eq('deleted', false)
     if (error) throw error
@@ -195,28 +201,34 @@ async function link(w: MyWorkspace) {
   // 2. この端末の記録のうち、サーバーにまだないものだけを送信待ちに積む。
   //    サーバーにあるものは、このあと受け取る内容を正とする
   //    （同期を止めていたあいだの古い内容で、ほかの人が直した記録を上書きしないため）
+  const missing = (k: string) => {
+    const deleted = have.get(k)
+    if (deleted === undefined) return true
+    // 本人が招待コードで入り直したときは、前に「記録を消して抜けた」分を、この端末に残っている記録から預け直す
+    return deleted && joined && w.role === 'client'
+  }
   const s = actions.getState()
   const all: string[] = []
   for (const col of SYNC_COLS) {
     for (const x of s[col] as { id: string }[]) {
-      if (!have.has(key(col, x.id)) && sendable(col, x)) all.push(key(col, x.id))
+      if (missing(key(col, x.id)) && sendable(col, x)) all.push(key(col, x.id))
     }
   }
-  if ((s.profile.name || s.profile.sport) && !have.has(key('profile', 'profile')) && sendable('profile', s.profile)) all.push(key('profile', 'profile'))
+  if ((s.profile.name || s.profile.sport) && missing(key('profile', 'profile')) && sendable('profile', s.profile)) all.push(key('profile', 'profile'))
   st.outbox = all
   st.linked = true
   save(); emit()
   await syncNow()
 }
 
-/** サーバーにある記録の一覧（自分に見える範囲。削除済みも含む） */
-async function serverKeys(ws: string): Promise<Set<string>> {
-  const out = new Set<string>()
+/** サーバーにある記録の一覧（自分に見える範囲）。値は、その記録が削除済みかどうか */
+async function serverKeys(ws: string): Promise<Map<string, boolean>> {
+  const out = new Map<string, boolean>()
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await sb().from('records').select('collection,id').eq('workspace_id', ws)
+    const { data, error } = await sb().from('records').select('collection,id,deleted').eq('workspace_id', ws)
       .order('collection', { ascending: true }).order('id', { ascending: true }).range(from, from + 999)
     if (error) throw error
-    for (const r of data ?? []) out.add(key(r.collection, r.id))
+    for (const r of data ?? []) out.set(key(r.collection, r.id), r.deleted)
     if (!data || data.length < 1000) return out
   }
 }
@@ -234,10 +246,13 @@ export function clearNotice() {
   save(); emit()
 }
 
-// ───────── 招く・外す（管理者） ─────────
+// ───────── 招く・外す・抜ける ─────────
 
 export interface Invite { id: string; code: string; role: 'coach' | 'client'; member_id: string | null; expires_at: string }
-/** 招待コードを作る。コードは1回きり・期限つきで、この戻り値でしか見られない */
+/**
+ * 招待コードを作る。コードは1回きり・期限つきで、この戻り値でしか見られない。
+ * 本人（client）の招待は管理者と指導者、指導者（coach）の招待は管理者だけが作れる
+ */
 export async function createInvite(role: 'coach' | 'client', memberId?: string): Promise<Invite> {
   if (!st.workspaceId) throw new Error('同期を始めてから招待してください')
   // 招く相手（人）がサーバーにいないと招待を作れないので、先に送る（送っている最中に足した分のために、もう一度）
@@ -249,17 +264,31 @@ export async function createInvite(role: 'coach' | 'client', memberId?: string):
 }
 
 export interface InviteRow { id: string; role: 'coach' | 'client'; member_id: string | null; created_at: string; expires_at: string; used_at: string | null }
+/** 招待の一覧。管理者には全部、指導者には自分が作ったものだけが返る */
 export const listInvites = async () => (await rpc<InviteRow[] | null>('list_invites', { ws: st.workspaceId })) ?? []
+/** 使われていない招待を取り消す。管理者は全部、指導者は自分が作ったものだけ */
 export const revokeInvite = (id: string) => rpc<null>('revoke_invite', { target: id })
+/** アカウントが結びついている人（Member.id）。本人を招くとき、まだの人だけを選べるようにする（管理者・指導者） */
+export const linkedMemberIds = async () => (await rpc<string[] | null>('linked_member_ids', { ws: st.workspaceId })) ?? []
 
 export interface Person { user_id: string; email: string | null; role: Role; member_id: string | null; joined_at: string }
+/** 参加している人の一覧（管理者だけ。メールアドレスつき） */
 export const listPeople = async () => (await rpc<Person[] | null>('list_members', { ws: st.workspaceId })) ?? []
 /** 指導者・本人をグループから外す。その人の記録はグループに残る */
 export const removePerson = (userId: string) => rpc<null>('remove_member', { ws: st.workspaceId, target: userId })
 
-/** 自分からグループを抜ける（管理者は抜けられない）。この端末の記録は残る */
-export async function leaveWorkspace() {
-  await rpc<null>('leave_workspace', { ws: st.workspaceId })
+/**
+ * 自分からグループを抜ける（管理者は抜けられない）。どちらを選んでも、この端末の記録は残る。
+ * keepRecords：本人（client）が、グループに預けた自分の記録を残すか。false なら、グループから消して抜ける
+ * （管理者と指導者の端末からも、次の同期で消える）。指導者が抜けるときは、どちらでも記録は変わらない
+ */
+export async function leaveWorkspace(keepRecords: boolean) {
+  const ws = st.workspaceId
+  if (!ws) return
+  // 残して抜けるときは、まだ送っていない記録を先に送る
+  if (keepRecords) await syncNow()
+  if (st.workspaceId !== ws) return // 送っているあいだに、グループから外れていた
+  await rpc<null>('leave_workspace', { ws, keep_records: keepRecords })
   unlink()
 }
 
@@ -276,7 +305,7 @@ async function refreshMembership(): Promise<boolean> {
   const memberId = me.member_id ?? undefined
   if (me.role !== st.role || memberId !== st.memberId || me.name !== st.workspaceName) {
     // 見える範囲が変わったときは、最初から受け取り直す
-    if (st.role && (me.role !== st.role || memberId !== st.memberId)) st.cursor = undefined
+    if (st.role && (me.role !== st.role || memberId !== st.memberId)) { st.cursor = undefined; st.cursorAt = undefined }
     st.role = me.role
     st.memberId = memberId
     st.workspaceName = me.name
@@ -347,17 +376,22 @@ async function send(rows: Row[]): Promise<number> {
   return (await send(rows.slice(0, half))) + (await send(rows.slice(half)))
 }
 
+interface Pulled { collection: string; id: string; data: unknown; deleted: boolean; updated_at: string }
+
 async function pull() {
   for (;;) {
-    let q = sb().from('records').select('collection,id,data,deleted,updated_at').eq('workspace_id', st.workspaceId!).order('updated_at', { ascending: true }).limit(1000)
-    if (st.cursor) q = q.gt('updated_at', st.cursor)
-    const { data, error } = await q
-    if (error) throw error
-    if (!data?.length) return
+    // 続きは (更新時刻, コレクション, ID) で決める。更新時刻だけだと、同じ時刻の記録
+    // （1回の送信や、まとめての削除）を、1000件の境目で取りこぼす
+    const data = (await rpc<Pulled[] | null>('pull_records', {
+      ws: st.workspaceId, after_ts: st.cursor ?? null, after_collection: st.cursorAt?.[0] ?? '', after_id: st.cursorAt?.[1] ?? '',
+    })) ?? []
+    if (!data.length) return
     // まだ送っていない手元の変更は、上書きしない（次の同期で送る）
     const pending = new Set(st.outbox)
     actions.applyRemote(data.filter((r) => !pending.has(key(r.collection, r.id))))
-    st.cursor = data[data.length - 1].updated_at
+    const last = data[data.length - 1]
+    st.cursor = last.updated_at
+    st.cursorAt = [last.collection, last.id]
     save()
     if (data.length < 1000) return
   }
