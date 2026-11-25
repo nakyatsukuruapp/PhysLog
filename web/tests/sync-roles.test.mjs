@@ -67,7 +67,7 @@ class Query {
 }
 
 class Fake {
-  constructor(user) { this.user = user; this.calls = 0 }
+  constructor(user) { this.user = user; this.calls = 0; this.failOnce = new Set() } // failOnce：次の1回だけ失敗させる関数名（通信の失敗を再現）
   auth = {
     getSession: async () => ({ data: { session: this.user ? { user: this.user } : null } }),
     signOut: async () => ({ error: null }),
@@ -93,6 +93,7 @@ class Fake {
   /** PostgREST と同じ返し方：表を返す関数は配列、1行（複合型）はオブジェクト、void は null、それ以外は値 */
   rpc(name, args = {}) {
     assert.match(name, /^[a-z_]+$/)
+    if (this.failOnce.delete(name)) return Promise.resolve({ data: null, error: { code: '', message: 'Failed to fetch' } })
     const keys = Object.keys(args)
     const call = `public.${name}(${keys.map((k, i) => `${k} => $${i + 1}`).join(', ')})`
     const vals = keys.map((k) => args[k])
@@ -439,6 +440,76 @@ try {
     await syncAll(O1)
     assert.ok(O1.data().bodies.some((x) => x.id === 'b-k9') && O1.data().sessions.some((x) => x.id === 's-k-own'), '管理者の端末にも残る')
     assert.deepEqual(plain(await O1.sync.linkedMemberIds()), [dai.id])
+  })
+
+  // ───── 指導者を外すとき、相手の端末の記録を残すか消すかを、外す側（残る側）が選ぶ ─────
+  await check('管理者が指導者を「消して外す」と、相手の端末からグループの記録が消える。参加前から持っていた人の記録は残る', async () => {
+    const uE = await makeUser('coach2')
+    const E = makeDevice(uE)
+    // 参加する前から、この端末にあった記録（自分の分と、自分が見ている別の人の分）
+    E.actions.renameMember('me', 'Emi')
+    const pal = E.actions.addMember('Pal', false)
+    E.actions.saveSession(session('s-e-own', { memo: 'my own' }))
+    E.actions.saveSession(session('s-e-pal', { memberId: pal.id, memo: 'pal' }))
+    await E.sync.joinWorkspace((await O1.sync.createInvite('coach')).code)
+    assert.deepEqual(names(E), ['Dai', 'Emi', 'Katsura', 'Pal', 'Ryota'])
+    const ofDai = () => E.data().conditions.filter((x) => x.memberId === dai.id).length
+    assert.ok(E.data().sessions.some((x) => x.id === 's-k-own'), 'グループの記録が届いている')
+    assert.equal(ofDai(), 1100)
+    // グループの仕事として、この端末でグループの人の記録を足す
+    E.actions.setActiveMember(kat.id)
+    E.actions.saveSession(session('s-e-forK', { date: '2026-12-02', memo: 'by E' }))
+    await syncAll(E)
+
+    await O1.sync.removePerson(uE.id, true)
+    await syncAll(E)
+    assert.equal(E.st().workspaceId, undefined)
+    assert.match(E.st().notice ?? '', /この端末にあったグループの記録を消しました/)
+    assert.deepEqual(names(E), ['Emi', 'Pal'], '人は、持ち込んだ人だけが残る')
+    assert.deepEqual(ids(E.data().sessions), ['s-e-own', 's-e-pal'], '記録は、持ち込んだ人の分だけが残る')
+    assert.deepEqual([E.data().conditions.length, E.data().bodies.length], [0, 0])
+    assert.deepEqual(E.data().profile, { name: '', sport: '' })
+    assert.ok(E.data().members.some((m) => m.id === E.data().activeMemberId), '選択中の人は、残っている人になる')
+    // グループには、すべて残っている
+    assert.equal(await count(`workspace_id = $1 and id in ('s-e-own', 's-e-pal', 's-e-forK') and not deleted`, [ws]), 3)
+    await syncAll(O1)
+    assert.ok(['s-e-own', 's-e-pal', 's-e-forK', 's-k-own'].every((id) => O1.data().sessions.some((x) => x.id === id)))
+
+    // 入り直すと、また全部届く
+    await E.sync.joinWorkspace((await O1.sync.createInvite('coach')).code)
+    assert.ok(E.data().sessions.some((x) => x.id === 's-k-own') && E.data().sessions.some((x) => x.id === 's-e-forK'))
+    assert.equal(ofDai(), 1100)
+
+    // 「残して外す」なら、相手の端末の記録はそのまま
+    await O1.sync.removePerson(uE.id, false)
+    await syncAll(E)
+    assert.equal(E.st().workspaceId, undefined)
+    assert.match(E.st().notice ?? '', /この端末の記録は、そのまま残っています/)
+    assert.ok(E.data().sessions.some((x) => x.id === 's-k-own'))
+    assert.equal(ofDai(), 1100)
+
+    // もう一度入ってから「消して外す」。最初に持ち込んだ人の控えは、入り直しても残っている
+    await E.sync.joinWorkspace((await O1.sync.createInvite('coach')).code)
+    await O1.sync.removePerson(uE.id, true)
+    // 外した側の選択を聞けなかったとき（通信の失敗）は、何も消さず、同期もつないだままにして、次でやり直す
+    E.fake.failOnce.add('my_departure')
+    await assert.rejects(E.sync.syncNow(), /Failed to fetch/)
+    assert.equal(E.st().workspaceId, ws)
+    assert.equal(ofDai(), 1100)
+    await syncAll(E)
+    assert.equal(E.st().workspaceId, undefined)
+    assert.deepEqual(names(E), ['Emi', 'Pal'])
+    assert.deepEqual(ids(E.data().sessions), ['s-e-own', 's-e-pal'])
+    assert.equal(E.data().conditions.length, 0)
+  })
+
+  await check('本人を「消して外す」で外しても、本人の端末の記録は消えない（本人の端末にあるのは、本人の記録だけ）', async () => {
+    await O1.sync.removePerson(uD.id, true)
+    await syncAll(D)
+    assert.equal(D.st().workspaceId, undefined)
+    assert.match(D.st().notice ?? '', /この端末の記録は、そのまま残っています/)
+    assert.equal(D.data().conditions.length, 1100)
+    assert.equal(await count(`workspace_id = $1 and member_id = $2 and collection = 'conditions' and not deleted`, [ws, dai.id]), 1100, 'グループにも残る')
   })
 
   await check('指導者が自分から抜けると、どのグループにも入っていない状態に戻る', async () => {

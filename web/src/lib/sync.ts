@@ -7,7 +7,8 @@
 // - 端末の中の記録（localStorage）はそのまま使えるので、電波がなくても記録できる
 //
 // 役割（グループごと）
-// - owner（管理者）・coach（指導者）：グループ全員の記録を読み書きする。本人を招ける（指導者を招く・人を外すのは管理者だけ）
+// - owner（管理者）・coach（指導者）：グループ全員の記録を読み書きする。本人を招ける（指導者を招く・人を外すのは管理者だけ）。
+//   管理者が指導者を外すときは、その人の端末に残っているグループの記録を消すかどうかを選べる
 // - client（本人）：自分の記録だけを読み書きする。人（members）と profile は送らない。
 //   抜けるときに、自分の記録をグループに残すか消すかを選べる
 // だれが何を読み書きできるかは、サーバー側（RLS。supabase/migrations）で決まる。
@@ -16,6 +17,7 @@
 import { useSyncExternalStore } from 'react'
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js'
 import { actions, DEFAULT_MEMBER, setChangeListener, SYNC_COLS, type Change } from '../store'
+import { deleteImage } from './photos'
 import type { AppData, Member } from '../types'
 
 const URL = 'https://diobubwcrxeikonrhtmf.supabase.co'
@@ -46,6 +48,16 @@ export interface SyncState {
 const load = (): SyncState => { try { return { outbox: [], ...JSON.parse(localStorage.getItem(LS) ?? '{}') } } catch { return { outbox: [] } } }
 let st: SyncState = load()
 const save = () => { try { localStorage.setItem(LS, JSON.stringify(st)) } catch { /* 無視 */ } }
+
+// この端末が、グループにつなぐ前から持っていた人（グループごと）。
+// 外れて端末の記録を消すことになったとき、この人たちの記録だけは残す。同期を止めても・外れても、この控えは消さない
+const LS_BROUGHT = 'physlog.brought'
+const loadBrought = (): Record<string, string[]> => { try { return JSON.parse(localStorage.getItem(LS_BROUGHT) ?? '{}') } catch { return {} } }
+function rememberBrought(ws: string, ids: string[]) {
+  const all = loadBrought()
+  all[ws] = [...new Set([...(all[ws] ?? []), ...ids])]
+  try { localStorage.setItem(LS_BROUGHT, JSON.stringify(all)) } catch { /* 無視 */ }
+}
 
 let client: SupabaseClient | null = null
 export const sb = () => (client ??= createClient(URL, KEY, { auth: { persistSession: true, autoRefreshToken: true, storageKey: 'physlog.auth' } }))
@@ -194,6 +206,10 @@ async function link(w: MyWorkspace, joined = false) {
       else if (m.id === DEFAULT_MEMBER) map.set(m.id, crypto.randomUUID())
     }
   }
+  if (w.role !== 'client') {
+    const known = new Set(remote.map((m) => m.id))
+    rememberBrought(w.id, local.members.map((m) => map.get(m.id) ?? m.id).filter((id) => !known.has(id)))
+  }
   actions.remapMembers(map, remote)
   // 人の名前は、サーバーにあるものを正とする
   actions.applyRemote(remote.map((m) => ({ collection: 'members', id: m.id, data: m, deleted: false })))
@@ -274,8 +290,13 @@ export const linkedMemberIds = async () => (await rpc<string[] | null>('linked_m
 export interface Person { user_id: string; email: string | null; role: Role; member_id: string | null; joined_at: string }
 /** 参加している人の一覧（管理者だけ。メールアドレスつき） */
 export const listPeople = async () => (await rpc<Person[] | null>('list_members', { ws: st.workspaceId })) ?? []
-/** 指導者・本人をグループから外す。その人の記録はグループに残る */
-export const removePerson = (userId: string) => rpc<null>('remove_member', { ws: st.workspaceId, target: userId })
+/**
+ * 指導者・本人をグループから外す（管理者だけ）。その人の記録はグループに残る。
+ * wipeDevice：指導者を外すとき、その人の端末に残っているグループの記録も消すか（外す側が選ぶ）。
+ * 相手の端末は、次に同期しようとしたときに消す。本人を外すときは、どちらでも相手の端末は変わらない
+ */
+export const removePerson = (userId: string, wipeDevice = false) =>
+  rpc<null>('remove_member', { ws: st.workspaceId, target: userId, wipe_device: wipeDevice })
 
 /**
  * 自分からグループを抜ける（管理者は抜けられない）。どちらを選んでも、この端末の記録は残る。
@@ -298,7 +319,21 @@ export async function leaveWorkspace(keepRecords: boolean) {
 async function refreshMembership(): Promise<boolean> {
   const me = (await myWorkspaces()).find((w) => w.id === st.workspaceId)
   if (!me) {
-    st = { outbox: [], notice: `「${st.workspaceName ?? 'グループ'}」から外れたため、同期を止めました。この端末の記録は、そのまま残っています。` }
+    // 外した側が「端末の記録も消す」を選んでいたら、それに従う（聞けなかったときは、何もせずに次の同期でやり直す）
+    const ws = st.workspaceId!
+    const name = st.workspaceName ?? 'グループ'
+    const wipe = st.role !== 'client' && (await rpc<boolean | null>('my_departure', { ws })) === true
+    if (wipe) {
+      for (const id of actions.keepOnlyMembers(new Set(loadBrought()[ws] ?? []))) {
+        try { deleteImage(id).catch(() => {}) } catch { /* 無視 */ }
+      }
+    }
+    st = {
+      outbox: [],
+      notice: wipe
+        ? `「${name}」から外れたため、同期を止めました。管理者の選択により、この端末にあったグループの記録を消しました（参加する前からこの端末にあった人の記録は、そのまま残っています）。`
+        : `「${name}」から外れたため、同期を止めました。この端末の記録は、そのまま残っています。`,
+    }
     save()
     return false
   }

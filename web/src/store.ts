@@ -269,6 +269,30 @@ export const actions = {
     commit(next, true)
   },
 
+  /**
+   * グループから外れ、端末の記録を消すことになったとき：指定した人（この端末が参加前から持っていた人）とその記録だけを残す。
+   * 送信待ちには積まない（もうグループの一員ではないため）。消した写真の記録のIDを返す（画像も消せるように）
+   */
+  keepOnlyMembers: (keep: Set<string>): string[] => {
+    const kept = state.members.filter((m) => keep.has(m.id))
+    const members = kept.length ? kept : empty().members
+    const mine = <T extends { memberId?: string }>(l: T[]) => l.filter((x) => keep.has(x.memberId ?? DEFAULT_MEMBER))
+    const gone = state.photos.filter((x) => !keep.has(x.memberId ?? DEFAULT_MEMBER)).map((x) => x.id)
+    commit({
+      ...state,
+      // profile はグループで1つのものを受け取っているので、空に戻す
+      profile: empty().profile,
+      members,
+      activeMemberId: members.some((m) => m.id === state.activeMemberId) ? state.activeMemberId : members[0].id,
+      bodies: mine(state.bodies),
+      abilities: mine(state.abilities),
+      sessions: mine(state.sessions),
+      conditions: mine(state.conditions),
+      photos: mine(state.photos),
+      activities: mine(state.activities),
+    }, true)
+    return gone
+  },
   /** 同期の初回：メンバーIDを付け替える（端末ごとに同じ "me" があるとぶつかるため）。記録の memberId も付け替える */
   remapMembers: (map: Map<string, string>, remoteMembers: Member[] = []) => {
     if (!map.size && !remoteMembers.length) return

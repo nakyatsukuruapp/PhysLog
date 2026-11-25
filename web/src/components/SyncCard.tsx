@@ -120,7 +120,7 @@ function Start(props: { email: string; busy: boolean; run: Run }) {
           <div className="sub" style={{ lineHeight: 1.7, margin: '6px 0 10px' }}>
             {info.role === 'client'
               ? `${info.member_name ?? 'あなた'} さんの記録として同期します。この端末でいま選んでいる人（${activeName}）の記録が送られ、グループの管理者と指導者が読み書きできるようになります。あなたに見えるのは、自分の記録だけです。`
-              : 'グループ全員の記録を読み書きできるようになります。この端末の記録（全員分）も、グループに送られます。'}
+              : 'グループ全員の記録を読み書きできるようになります。この端末の記録（全員分）も、グループに送られます。管理者があなたを外すときは、この端末にあるグループの記録を消すことを選べます（参加する前からこの端末にあった人の記録は残ります）。'}
           </div>
           {info.already_member ? (
             <div className="sub">このグループには、すでに参加しています。上の「参加中のグループ」から始めてください。</div>
@@ -167,7 +167,7 @@ function Linked(props: { email: string; busy: boolean; run: Run }) {
         <div className="sub" style={{ lineHeight: 1.7, marginTop: 8 }}>自分（{me ?? '本人'}）の記録だけを同期しています。グループの管理者と指導者も、この記録を読み書きできます。</div>
       )}
       {st.role === 'coach' && (
-        <div className="sub" style={{ lineHeight: 1.7, marginTop: 8 }}>グループ全員の記録を読み書きできます。本人を招くこともできます。指導者を招く・人を外すのは、管理者だけができます。</div>
+        <div className="sub" style={{ lineHeight: 1.7, marginTop: 8 }}>グループ全員の記録を読み書きできます。本人を招くこともできます。指導者を招く・人を外すのは、管理者だけができます。管理者があなたを外すときは、この端末にあるグループの記録を消すことを選べます（参加する前からこの端末にあった人の記録は残ります）。</div>
       )}
       {(st.role === 'owner' || st.role === 'coach') && <StaffTools owner={st.role === 'owner'} busy={busy} run={run} />}
       <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
@@ -206,6 +206,7 @@ function StaffTools(props: { owner: boolean; busy: boolean; run: Run }) {
   const [invites, setInvites] = useState<InviteRow[]>([])
   const [issued, setIssued] = useState<Invite | null>(null)
   const [target, setTarget] = useState('')
+  const [removing, setRemoving] = useState('') // 外そうとしている指導者（user_id）
 
   const reload = useCallback(async () => {
     // 参加している人の一覧（メールアドレスつき）は管理者だけ。指導者は、結びつき済みの人だけを知る
@@ -222,6 +223,11 @@ function StaffTools(props: { owner: boolean; busy: boolean; run: Run }) {
   const pick = free.some((m) => m.id === target) ? target : ''
   const pending = invites.filter((i) => !i.used_at && new Date(i.expires_at).getTime() > Date.now())
   const issue = (role: 'coach' | 'client') => run(async () => { setIssued(await createInvite(role, pick)); await reload() })
+  // 指導者を外す。相手の端末に残っているグループの記録を消すかどうかは、外す側が選ぶ
+  const removeCoach = (userId: string, wipeDevice: boolean) => run(
+    async () => { await removePerson(userId, wipeDevice); setRemoving(''); await reload() },
+    wipeDevice ? '外しました（相手の端末の記録も消します）' : '外しました（相手の端末の記録は残ります）',
+  )
 
   return (
     <>
@@ -261,15 +267,33 @@ function StaffTools(props: { owner: boolean; busy: boolean; run: Run }) {
         <>
           <label className="label">参加している人</label>
           {people.map((p) => (
-            <div key={p.user_id} className="list-item">
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <b>{p.role === 'client' ? nameOf(p.member_id) : ROLE_LABEL[p.role]}</b>
-                {p.role === 'client' && <span className="sub">　本人</span>}
-                <div className="sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.email}</div>
+            <div key={p.user_id}>
+              <div className="list-item">
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <b>{p.role === 'client' ? nameOf(p.member_id) : ROLE_LABEL[p.role]}</b>
+                  {p.role === 'client' && <span className="sub">　本人</span>}
+                  <div className="sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.email}</div>
+                </div>
+                {p.role === 'client' && (
+                  <ConfirmButton className="chip" label="外す" confirmLabel="もう一度押すと外します"
+                    onConfirm={() => { run(async () => { await removePerson(p.user_id); await reload() }, '外しました（記録はグループに残ります）') }} />
+                )}
+                {p.role === 'coach' && (
+                  <button className={`chip ${removing === p.user_id ? 'on' : ''}`} disabled={busy} onClick={() => setRemoving(removing === p.user_id ? '' : p.user_id)}>外す</button>
+                )}
               </div>
-              {p.role !== 'owner' && (
-                <ConfirmButton className="chip" label="外す" confirmLabel="もう一度押すと外します"
-                  onConfirm={() => { run(async () => { await removePerson(p.user_id); await reload() }, '外しました（記録はグループに残ります）') }} />
+              {removing === p.user_id && (
+                <div className="card" style={{ background: 'var(--fill2)', margin: '8px 0 10px', padding: 12 }}>
+                  <div style={{ lineHeight: 1.7 }}>この指導者の端末に残っている、グループの記録をどうしますか。</div>
+                  <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                    <button className="btn sm" disabled={busy} onClick={() => removeCoach(p.user_id, false)}>残して外す</button>
+                    <button className="btn sm danger" disabled={busy} onClick={() => removeCoach(p.user_id, true)}>消して外す</button>
+                    <button className="btn sm" disabled={busy} onClick={() => setRemoving('')}>やめる</button>
+                  </div>
+                  <div className="sub" style={{ lineHeight: 1.7, marginTop: 8 }}>
+                    どちらを選んでも、記録はグループに残ります。「消して外す」では、相手が次にアプリで同期しようとしたときに、その端末からグループの記録が消えます（相手が参加する前から持っていた人の記録は残ります）。相手の端末に電波がないあいだは消えず、すでに書き出されたバックアップまでは消せません。
+                  </div>
+                </div>
               )}
             </div>
           ))}
