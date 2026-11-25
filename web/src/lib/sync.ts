@@ -7,10 +7,15 @@
 // - 端末の中の記録（localStorage）はそのまま使えるので、電波がなくても記録できる
 //
 // 役割（グループごと）
-// - owner（管理者）・coach（指導者）：グループ全員の記録を読み書きする。本人を招ける（指導者を招く・人を外すのは管理者だけ）。
-//   管理者が指導者を外すときは、その人の端末に残っているグループの記録を消すかどうかを選べる
-// - client（本人）：自分の記録だけを読み書きする。人（members）と profile は送らない。
-//   抜けるときに、自分の記録をグループに残すか消すかを選べる
+// - owner（管理者）・coach（指導者）：グループ全員の記録を読み書きする。本人を招ける（指導者を招く・人を外すのは管理者だけ）
+// - client（本人）：自分の記録だけを読み書きする。人（members）と profile は送らない
+//
+// グループを離れるとき
+// - 本人：記録は、指導者の側（グループ）には残さない。本人の端末には残る。
+//   本人が「実績として渡す」を選んだときだけ、グループに残す。自分から抜けるときはその場で選び、
+//   管理者に外されたときは、次にアプリを開いたときに聞かれる（答えるまで、グループからは見えない）
+// - 指導者：自分から抜けると、この端末からグループの記録を消す。管理者が外すときは、消すかどうかを管理者が選ぶ。
+//   どちらでも、参加する前からこの端末にあった人の記録は残す
 // だれが何を読み書きできるかは、サーバー側（RLS。supabase/migrations）で決まる。
 // ここでの絞り込みは、送っても断られるものを最初から送らないためのもの。
 
@@ -74,6 +79,7 @@ export const useSyncState = (): SyncState => useSyncExternalStore(onSyncState, (
 
 const key = (col: string, id: string) => `${col}\u0000${id}`
 /** 本人（client）が送れるコレクション。サーバー側の権限（RLS）と同じ並び */
+type RecordCol = 'sessions' | 'bodies' | 'abilities' | 'conditions' | 'photos' | 'activities'
 const RECORD_COLS = new Set<string>(['sessions', 'bodies', 'abilities', 'conditions', 'photos', 'activities'])
 
 /** 本人（client）が送れるのは、自分の記録だけ。削除（data なし）は、持ち主をサーバー側で確かめる */
@@ -106,6 +112,8 @@ const MESSAGES: [string, string][] = [
   ['member not found', '相手が見つかりません。同期してから、もう一度お試しください'],
   ['member required', '誰の記録かを選んでください'],
   ['owner cannot leave', '管理者は、グループから抜けられません'],
+  ['handover pending', 'このグループには、前に外れたときの記録を渡すかどうかの返事が残っています。先に、この画面の上で答えてください'],
+  ['nothing to hand over', '返事を待っているグループが見つかりません（すでに答えたか、入り直しています）'],
   ['not allowed', 'この操作は、グループの管理者だけができます'],
   ['not signed in', 'ログインしてください'],
 ]
@@ -291,48 +299,127 @@ export interface Person { user_id: string; email: string | null; role: Role; mem
 /** 参加している人の一覧（管理者だけ。メールアドレスつき） */
 export const listPeople = async () => (await rpc<Person[] | null>('list_members', { ws: st.workspaceId })) ?? []
 /**
- * 指導者・本人をグループから外す（管理者だけ）。その人の記録はグループに残る。
- * wipeDevice：指導者を外すとき、その人の端末に残っているグループの記録も消すか（外す側が選ぶ）。
- * 相手の端末は、次に同期しようとしたときに消す。本人を外すときは、どちらでも相手の端末は変わらない
+ * 指導者・本人をグループから外す（管理者だけ）。
+ * 指導者：wipeDevice … その人の端末に残っているグループの記録も消すか（外す側が選ぶ）。相手の端末は、次に同期しようとしたときに消す
+ * 本人　：その人の記録は、グループから見えなくなる（本人の端末には残る）。本人が「実績として渡す」と答えたときだけ、グループに戻る
  */
-export const removePerson = (userId: string, wipeDevice = false) =>
-  rpc<null>('remove_member', { ws: st.workspaceId, target: userId, wipe_device: wipeDevice })
+export async function removePerson(userId: string, wipeDevice = false) {
+  // 外す前に、この端末でまだ送っていない記録を届ける（本人を外すとき、本人が最後に受け取る記録に入るように）
+  await syncNow()
+  await rpc<null>('remove_member', { ws: st.workspaceId, target: userId, wipe_device: wipeDevice })
+}
+
+export type HandoverState = 'pending' | 'given' | 'declined'
+export interface Departed { member_id: string; member_name: string | null; handover: HandoverState; departed_at: string; resolved_at: string | null }
+/** グループを離れた本人と、記録を実績として渡したかどうか（管理者・指導者） */
+export const listDeparted = async () => (await rpc<Departed[] | null>('list_departed', { ws: st.workspaceId })) ?? []
 
 /**
- * 自分からグループを抜ける（管理者は抜けられない）。どちらを選んでも、この端末の記録は残る。
- * keepRecords：本人（client）が、グループに預けた自分の記録を残すか。false なら、グループから消して抜ける
- * （管理者と指導者の端末からも、次の同期で消える）。指導者が抜けるときは、どちらでも記録は変わらない
+ * 自分からグループを抜ける（管理者は抜けられない）。
+ * 本人　：handOver … これまでの記録を、実績としてグループに渡すか。渡さなければ、グループから引き上げる
+ *         （管理者と指導者の端末からも、次の同期で消える）。どちらでも、この端末の記録は残る
+ * 指導者：この端末から、グループの記録を消す（参加する前からこの端末にあった人の記録は残す）
  */
-export async function leaveWorkspace(keepRecords: boolean) {
+export async function leaveWorkspace(handOver = false) {
   const ws = st.workspaceId
   if (!ws) return
-  // 残して抜けるときは、まだ送っていない記録を先に送る
-  if (keepRecords) await syncNow()
-  if (st.workspaceId !== ws) return // 送っているあいだに、グループから外れていた
-  await rpc<null>('leave_workspace', { ws, keep_records: keepRecords })
-  unlink()
+  // 抜ける前に同期する。まだ送っていない記録を届け、本人の端末には、指導者が入れた分まで受け取っておく
+  await syncNow()
+  if (st.workspaceId === ws && st.outbox.length) await syncNow()
+  if (st.workspaceId !== ws) return // 同期しているあいだに、グループから外れていた
+  const role = st.role
+  const name = st.workspaceName ?? 'グループ'
+  // 指導者は、抜けるとこの端末からグループの記録が消える。送れていない記録を失わないよう、残っているうちは抜けない
+  if (role === 'coach' && st.outbox.length) throw new Error('まだ送れていない記録があります。少し待ってから、もう一度お試しください')
+  await rpc<null>('leave_workspace', { ws, hand_over: handOver })
+  if (role === 'client') { unlink(); return }
+  wipeGroupRecords(ws)
+  st = { outbox: [], notice: `「${name}」から抜けました。この端末にあったグループの記録を消しました（参加する前からこの端末にあった人の記録は、そのまま残っています）。` }
+  save(); emit()
+}
+
+/** この端末から、グループの記録を消す。グループにつなぐ前からこの端末にあった人と、その人の記録は残す */
+function wipeGroupRecords(ws: string) {
+  for (const id of actions.keepOnlyMembers(new Set(loadBrought()[ws] ?? []))) {
+    try { deleteImage(id).catch(() => {}) } catch { /* 無視 */ }
+  }
+}
+
+// ───────── 外された本人：記録を実績として渡すかどうか ─────────
+
+export interface Handover { workspace_id: string; workspace_name: string; member_id: string; member_name: string | null; departed_at: string; records: number }
+/** 管理者に外されて、これまでの記録を実績として渡すかどうかを、まだ答えていないグループ */
+export const myHandovers = async () => (await rpc<Handover[] | null>('my_handovers')) ?? []
+
+/**
+ * 外された本人の返事。give：これまでの記録を、実績としてグループに渡す（管理者と指導者が引き続き読める）。
+ * 渡さなければ、グループからは消えたままになる。どちらでも、この端末の記録は変わらない。あとから変えることはできない
+ */
+export async function resolveHandover(h: Handover, give: boolean) {
+  // 答えると、グループが預かっていた記録は、もう受け取れなくなる。この端末にまだ無い分を、先に受け取っておく
+  await receiveHeld(h.workspace_id, h.member_id, true)
+  await rpc<null>('resolve_handover', { ws: h.workspace_id, give })
+}
+
+interface Held { collection: string; id: string; data: unknown }
+
+/**
+ * 外された本人の「最後の受け取り」。外されたときにグループが預かった自分の記録を、この端末に入れる
+ * （指導者が代わりに入れて、まだこの端末に届いていなかった分が、ここで届く）。
+ * onlyMissing … false：まだつながっている端末が、外れたと分かったとき。同期と同じく、手元でまだ送っていない変更だけは上書きしない
+ *               true ：あとから受け取るとき（同期を止めていた端末など）。この端末に無い記録だけを足す
+ * この端末にその人がいなければ、何もしない（入れる先がないため）
+ */
+async function receiveHeld(ws: string, memberId: string, onlyMissing: boolean) {
+  if (!actions.getState().members.some((m) => m.id === memberId)) return
+  let after: [string, string] = ['', '']
+  for (;;) {
+    const rows = (await rpc<Held[] | null>('my_held_records', { ws, after_collection: after[0], after_id: after[1] })) ?? []
+    if (!rows.length) return
+    const mine = rows.filter((r) => RECORD_COLS.has(r.collection) && (r.data as { memberId?: string } | null)?.memberId === memberId)
+    if (onlyMissing) {
+      const s = actions.getState()
+      for (const col of RECORD_COLS) {
+        const have = new Set((s[col as keyof AppData] as { id: string }[]).map((x) => x.id))
+        const add = mine.filter((r) => r.collection === col && !have.has(r.id)).map((r) => r.data)
+        if (add.length) actions.upsertMany(col as RecordCol, add as never[])
+      }
+    } else {
+      const pending = new Set(st.outbox)
+      actions.applyRemote(mine.filter((r) => !pending.has(key(r.collection, r.id))).map((r) => ({ ...r, deleted: false })))
+    }
+    const last = rows[rows.length - 1]
+    after = [last.collection, last.id]
+    if (rows.length < 1000) return
+  }
 }
 
 // ───────── 送受信 ─────────
 
-/** 自分の役割を確かめる。グループから外れていたら、この端末の同期を止める（記録は端末に残す） */
+/** グループを離れた人の控え（サーバー）。指導者：この端末のグループの記録を消すか。本人：記録を渡すかどうかの返事 */
+interface Departure { role: 'coach' | 'client'; wipe_device: boolean; handover: HandoverState | null }
+
+/** 自分の役割を確かめる。グループから外れていたら、この端末の同期を止める */
 async function refreshMembership(): Promise<boolean> {
   const me = (await myWorkspaces()).find((w) => w.id === st.workspaceId)
   if (!me) {
-    // 外した側が「端末の記録も消す」を選んでいたら、それに従う（聞けなかったときは、何もせずに次の同期でやり直す）
     const ws = st.workspaceId!
     const name = st.workspaceName ?? 'グループ'
-    const wipe = st.role !== 'client' && (await rpc<boolean | null>('my_departure', { ws })) === true
-    if (wipe) {
-      for (const id of actions.keepOnlyMembers(new Set(loadBrought()[ws] ?? []))) {
-        try { deleteImage(id).catch(() => {}) } catch { /* 無視 */ }
-      }
-    }
+    // 離れた控えを読んで従う。聞けなかったとき（通信の失敗）は、何も変えずに、次の同期でやり直す
+    const dep = await rpc<Departure | null>('my_departure', { ws })
+    // 指導者：外した側が「端末の記録も消す」を選んだか、別の端末で自分から抜けていたら、この端末のグループの記録を消す
+    const wipe = st.role !== 'client' && dep?.wipe_device === true
+    // 本人：管理者に外されて、記録を渡すかどうかをまだ答えていない。グループが預かった自分の記録を、この端末に受け取っておく
+    const asked = st.role === 'client' && dep?.handover === 'pending'
+    if (asked && st.memberId) await receiveHeld(ws, st.memberId, false)
+    if (wipe) wipeGroupRecords(ws)
     st = {
       outbox: [],
       notice: wipe
-        ? `「${name}」から外れたため、同期を止めました。管理者の選択により、この端末にあったグループの記録を消しました（参加する前からこの端末にあった人の記録は、そのまま残っています）。`
-        : `「${name}」から外れたため、同期を止めました。この端末の記録は、そのまま残っています。`,
+        ? `「${name}」から外れたため、同期を止めました。この端末にあったグループの記録を消しました（参加する前からこの端末にあった人の記録は、そのまま残っています）。`
+        : asked
+          ? `「${name}」から外れたため、同期を止めました。あなたの記録は、この端末に残っています。これまでの記録をグループに実績として渡すかどうかを、選んでください。`
+          : `「${name}」から外れたため、同期を止めました。この端末の記録は、そのまま残っています。`,
     }
     save()
     return false
@@ -391,7 +478,12 @@ async function push() {
   }
   let rejected = 0
   for (let i = 0; i < rows.length; i += 500) rejected += await send(rows.slice(i, i + 500))
-  if (rejected) st.rejected = (st.rejected ?? 0) + rejected
+  if (rejected) {
+    st.rejected = (st.rejected ?? 0) + rejected
+    // 管理者・指導者の記録が断られるのは、本人が渡さずに持ち帰った記録を書き戻そうとしたとき。
+    // その記録の削除を受け取りそこねていることがあるので、最初から受け取り直す（断られた記録は、この端末からも消える）
+    if (st.role !== 'client') { st.cursor = undefined; st.cursorAt = undefined }
+  }
   // 送っている間に増えた分は残す
   const sent = new Set(keys)
   st.outbox = st.outbox.filter((k) => !sent.has(k))

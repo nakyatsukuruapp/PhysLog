@@ -152,6 +152,11 @@ const ids = (l) => l.map((x) => x.id).sort()
 const names = (d) => d.data().members.map((m) => m.name).sort()
 const server = (ws, where = 'true') => admin(`select collection, id, member_id, deleted, data, updated_by from public.records where workspace_id = $1 and ${where} order by collection, id`, [ws])
 const session = (id, extra = {}) => ({ id, date: '2026-11-24', sport: '', memo: '', exercises: [], ...extra })
+const count = async (where, params) => Number((await admin(`select count(*) as n from public.records where ${where}`, params))[0].n)
+const heldCount = async (ws, user) => Number((await admin('select count(*) as n from public.held_records where workspace_id = $1 and user_id = $2', [ws, user.id]))[0].n)
+/** その人の、消えていない記録の数（グループの側） */
+const liveOf = (ws, memberId) => count(`workspace_id = $1 and member_id = $2 and not deleted and collection <> 'members'`, [ws, memberId])
+const departed = async (dev) => plain(await dev.sync.listDeparted()).map((d) => `${d.member_name}/${d.handover}`)
 
 let passed = 0
 const check = async (label, fn) => { await fn(); passed++; console.log('PASS', label) }
@@ -352,32 +357,67 @@ try {
     assert.deepEqual(ids(K2.data().bodies), ['b-k2', 'b-k3', `hb:${kat.id}:2026-11-22`])
   })
 
-  await check('管理者が本人を外すと、本人の端末は同期を止める。端末の記録は残り、サーバーには届かない', async () => {
-    await O1.sync.removePerson(uK.id)
+  await check('管理者が本人を外すと、その人の記録はグループから見えなくなる。本人の端末には、指導者が入れた分まで届いて残る', async () => {
+    // 外す前に、指導者が本人の記録を1件入れ、別の1件を直しておく（本人の端末には、まだ届いていない）
+    C.actions.setActiveMember(kat.id)
+    C.actions.saveSession(session('s-c-late', { date: '2026-11-29', memo: 'entered just before removal' }))
+    C.actions.saveSession({ ...C.data().sessions.find((x) => x.id === 's-k-ok'), memo: 'coach fixed' })
+    await syncAll(C)
+    // 本人の端末には、まだ送っていない変更がある（新しい1件と、すでにある記録の手直し）
     K.actions.saveBody({ id: 'b-k4', date: '2026-11-29', weight: 70.5, memo: '' })
+    K.actions.saveSession({ ...K.data().sessions.find((x) => x.id === 's-c1'), memo: 'my unsent edit' })
+    // 管理者の端末にも、その人の記録の手直しが、まだ送られずに残っている
+    O1.actions.saveSession({ ...O1.data().sessions.find((x) => x.id === 's-k-own'), memo: 'owner last edit' })
+    await tick()
+
+    await O1.sync.removePerson(uK.id)
     await syncAll(K)
     assert.equal(K.st().workspaceId, undefined)
-    assert.match(K.st().notice ?? '', /外れたため、同期を止めました/)
+    assert.match(K.st().notice ?? '', /外れたため、同期を止めました。あなたの記録は、この端末に残っています/)
+    assert.equal(K.data().sessions.find((x) => x.id === 's-k-own')?.memo, 'owner last edit', '外す側の端末でまだ送っていなかった手直しも、外す前に届けてから預かる')
+    // 外れたと分かったときに、グループが預かった自分の記録を受け取っている
+    assert.equal(K.data().sessions.find((x) => x.id === 's-c-late')?.memo, 'entered just before removal', '指導者が入れて、まだ届いていなかった記録が届く')
+    assert.equal(K.data().sessions.find((x) => x.id === 's-k-ok')?.memo, 'coach fixed', '指導者が直した内容が届く')
+    assert.equal(K.data().sessions.find((x) => x.id === 's-c1')?.memo, 'my unsent edit', 'まだ送っていなかった手元の変更は、上書きしない')
     assert.ok(K.data().bodies.some((x) => x.id === 'b-k4') && K.data().sessions.some((x) => x.id === 's-k-own'))
-    assert.equal((await server(ws, `id = 'b-k4'`)).length, 0)
-    assert.equal((await server(ws, `member_id = '${kat.id}' and not deleted and collection <> 'members'`)).length > 0, true, 'その人の記録はグループに残る')
+    assert.ok(K.data().sessions.every((x) => x.memberId === kat.id))
+    // グループの側には残らない
+    assert.equal((await server(ws, `id = 'b-k4'`)).length, 0, '外れたあとの記録は、グループに届かない')
+    assert.equal(await liveOf(ws, kat.id), 0, 'その人の記録は、グループから見えなくなる')
+    assert.ok(await heldCount(ws, uK) > 0, '本人が答えるまで、預かる')
     assert.deepEqual(plain(await K.sync.myWorkspaces()), [])
+    const [h] = plain(await K.sync.myHandovers())
+    assert.deepEqual([h.workspace_name, h.member_id, h.member_name, h.records], ['PhysLog', kat.id, 'Katsura', await heldCount(ws, uK)])
+    await syncAll(O1, C)
+    for (const dev of [O1, C]) {
+      assert.ok(![...dev.data().sessions, ...dev.data().bodies, ...dev.data().conditions].some((x) => x.memberId === kat.id), '管理者・指導者の端末からも消える')
+      assert.ok(dev.data().members.some((m) => m.id === kat.id), '人（名前）は残る')
+      assert.ok(dev.data().sessions.some((x) => x.id === 's-r1'), 'ほかの人の記録は消えない')
+    }
+    assert.deepEqual(await departed(O1), ['Katsura/pending'])
+    assert.deepEqual(await departed(C), ['Katsura/pending'], '指導者にも、返事待ちと分かる')
+    assert.deepEqual(plain(await K.sync.listDeparted()), [], '外れた本人には、離れた人の一覧は出ない')
   })
 
-  await check('外した人をもう一度招くと、同じ端末で続きから同期できる', async () => {
+  await check('外した人を同じ人としてもう一度招くと、預かっていた記録がグループに戻り、同じ端末で続きから同期できる', async () => {
     const inv = await O1.sync.createInvite('client', kat.id)
     await K.sync.joinWorkspace(inv.code)
     assert.equal(K.st().role, 'client')
+    assert.deepEqual(plain(await K.sync.myHandovers()), [], '入り直したら、返事待ちは消える')
+    assert.equal(await heldCount(ws, uK), 0)
     assert.equal((await server(ws, `id = 'b-k4'`))[0]?.member_id, kat.id, '外れているあいだに入れた記録も届く')
     assert.equal(K.st().rejected, 1, '断られるのは、他人の記録とIDがぶつかる1件だけ（端末に残っているので、つなぎ直すとまた数えられる）')
+    await syncAll(O1, C)
+    for (const dev of [O1, C]) assert.ok(['s-k-own', 's-c-late', 's-k-ok', 's-c1'].every((id) => dev.data().sessions.some((x) => x.id === id)), '管理者・指導者の端末に、その人の記録が戻る')
+    assert.equal(O1.data().sessions.find((x) => x.id === 's-k-ok')?.memo, 'coach fixed', '戻るのは、外される直前の中身')
+    assert.deepEqual(await departed(O1), [])
   })
 
-  // ───── 指導者が本人を招く／抜けるときに、記録を残すか消すかを本人が選ぶ／1000件を超える受け取り ─────
+  // ───── 指導者が本人を招く／抜けるときに、記録を実績として渡すかを本人が選ぶ／1000件を超える受け取り ─────
   const uD = await makeUser('dai')
   const D = makeDevice(uD)
   let dai
   const many = (n) => Array.from({ length: n }, (_, i) => ({ id: `c-${String(i).padStart(4, '0')}`, memberId: 'me', date: '2026-10-01', sleep: 7, memo: '' }))
-  const count = async (where, params) => Number((await admin(`select count(*) as n from public.records where ${where}`, params))[0].n)
 
   await check('指導者も、本人を招ける（指導者は招けない）。アカウントが結びつき済みの人は招けない', async () => {
     dai = C.actions.addMember('Dai', false)
@@ -404,7 +444,7 @@ try {
     assert.equal(plain(O1.st().cursorAt).length, 2, '続きは (コレクション, ID) まで覚える')
   })
 
-  await check('本人が「記録を消して抜ける」と、グループと、管理者・指導者の端末から消える。本人の端末には残る', async () => {
+  await check('本人が「渡さずに抜ける」と、グループと、管理者・指導者の端末から消える。本人の端末には残る', async () => {
     await D.sync.leaveWorkspace(false)
     assert.equal(D.st().workspaceId, undefined)
     assert.equal(D.data().conditions.length, 1100, '本人の端末の記録は残る')
@@ -417,9 +457,11 @@ try {
     }
     assert.ok(O1.data().sessions.some((x) => x.id === 's-k-own'), 'ほかの人の記録は消えない')
     assert.deepEqual(plain(await D.sync.myWorkspaces()), [])
+    assert.deepEqual(plain(await D.sync.myHandovers()), [], '自分で選んで抜けたので、あとから聞かれない')
+    assert.deepEqual(await departed(O1), ['Dai/declined'])
   })
 
-  await check('消して抜けた本人が、招待コードで入り直すと、端末に残っている記録を預け直せる', async () => {
+  await check('渡さずに抜けた本人が、招待コードで入り直すと、端末に残っている記録を預け直せる', async () => {
     const inv = await O1.sync.createInvite('client', dai.id)
     await D.sync.joinWorkspace(inv.code)
     assert.equal(D.data().conditions.length, 1100, '入り直しても、端末の記録は消えない')
@@ -429,7 +471,7 @@ try {
     assert.equal(O1.data().conditions.filter((x) => x.memberId === dai.id).length, 1100)
   })
 
-  await check('本人が「記録を残して抜ける」と、まだ送っていない記録も届けてから抜け、記録はグループに残る', async () => {
+  await check('本人が「実績として渡して抜ける」と、まだ送っていない記録も届けてから抜け、記録はグループに残る', async () => {
     K.actions.saveBody({ id: 'b-k9', date: '2026-12-01', weight: 70, memo: '' }) // 同期する前に抜ける
     await tick()
     await K.sync.leaveWorkspace(true)
@@ -440,6 +482,7 @@ try {
     await syncAll(O1)
     assert.ok(O1.data().bodies.some((x) => x.id === 'b-k9') && O1.data().sessions.some((x) => x.id === 's-k-own'), '管理者の端末にも残る')
     assert.deepEqual(plain(await O1.sync.linkedMemberIds()), [dai.id])
+    assert.deepEqual(await departed(O1), ['Katsura/given'], '実績として渡した、と管理者に分かる')
   })
 
   // ───── 指導者を外すとき、相手の端末の記録を残すか消すかを、外す側（残る側）が選ぶ ─────
@@ -503,20 +546,149 @@ try {
     assert.equal(E.data().conditions.length, 0)
   })
 
-  await check('本人を「消して外す」で外しても、本人の端末の記録は消えない（本人の端末にあるのは、本人の記録だけ）', async () => {
-    await O1.sync.removePerson(uD.id, true)
+  // ───── 管理者に外された本人が、記録を実績として渡すかどうかを答える ─────
+  const daiConditions = (dev) => dev.data().conditions.filter((x) => x.memberId === dai.id).length
+
+  await check('外された本人が「実績として渡す」と答えるまで、グループには戻らない（指導者の端末が古い写しを送っても）。答えると戻る', async () => {
+    // 指導者が、本人（Dai）の記録を入れておく。本人の端末には、まだ届いていない（どちらも、預かりの1000件より後ろに並ぶ）
+    C.actions.upsertMany('conditions', [{ id: 'c-zzzz', memberId: dai.id, date: '2026-12-03', sleep: 8, memo: 'by coach' }])
+    C.actions.saveSession(session('s-c-forD', { memberId: dai.id, date: '2026-12-03', memo: 'by coach' }))
+    await syncAll(C, O1)
+    // 指導者の端末には、まだ送っていない手直しがある（電波がなかった、という想定）
+    C.actions.upsertMany('conditions', [{ ...C.data().conditions.find((x) => x.id === 'c-0001'), memo: 'offline edit' }])
+    await tick()
+
+    await O1.sync.removePerson(uD.id, true) // 「端末の記録も消す」は、本人には効かない
     await syncAll(D)
     assert.equal(D.st().workspaceId, undefined)
-    assert.match(D.st().notice ?? '', /この端末の記録は、そのまま残っています/)
-    assert.equal(D.data().conditions.length, 1100)
-    assert.equal(await count(`workspace_id = $1 and member_id = $2 and collection = 'conditions' and not deleted`, [ws, dai.id]), 1100, 'グループにも残る')
+    assert.match(D.st().notice ?? '', /あなたの記録は、この端末に残っています/)
+    assert.equal(D.data().conditions.length, 1101, '1000件を超える預かりも、最後まで受け取る')
+    assert.equal(D.data().conditions.find((x) => x.id === 'c-zzzz')?.memo, 'by coach')
+    assert.equal(D.data().sessions.find((x) => x.id === 's-c-forD')?.memo, 'by coach')
+    assert.equal(await liveOf(ws, dai.id), 0)
+    const [h] = plain(await D.sync.myHandovers())
+    assert.deepEqual([h.member_name, h.records], ['Dai', 1102])
+    await assert.rejects(D.sync.joinWorkspace((await O1.sync.createInvite('coach')).code), /返事が残っています/, '返事の前は、別の役割では入り直せない')
+
+    // 指導者の端末：古い写しは断られ、グループに戻らない。その端末からも消える
+    await syncAll(C)
+    assert.equal(C.st().rejected, 1)
+    assert.deepEqual(C.st().outbox, [])
+    assert.equal(daiConditions(C), 0)
+    assert.ok(!C.data().sessions.some((x) => x.memberId === dai.id))
+    assert.equal(await count(`workspace_id = $1 and id = 'c-0001' and deleted and data is null`, [ws]), 1)
+    assert.ok(C.data().sessions.some((x) => x.id === 's-r1'), 'ほかの人の記録は、受け取り直しても残る')
+    await syncAll(O1)
+    assert.equal(daiConditions(O1), 0)
+    assert.deepEqual(await departed(O1), ['Dai/pending', 'Katsura/given'])
+
+    await D.sync.resolveHandover(h, true)
+    assert.deepEqual(plain(await D.sync.myHandovers()), [])
+    assert.equal(await heldCount(ws, uD), 0)
+    assert.equal(await liveOf(ws, dai.id), 1102)
+    await syncAll(O1, C)
+    for (const dev of [O1, C]) assert.equal(daiConditions(dev), 1101, '渡された記録が、管理者・指導者の端末に戻る')
+    assert.equal(O1.data().conditions.find((x) => x.id === 'c-0001')?.memo, '', '戻るのは、外される直前の中身（断られた古い写しではない）')
+    assert.equal(D.data().conditions.length, 1101, '本人の端末の記録は変わらない')
+    assert.deepEqual(await departed(O1), ['Dai/given', 'Katsura/given'])
+    await assert.rejects(D.sync.resolveHandover(h, false), /すでに答えた/, '答えは、あとから変えられない')
+    assert.equal(await liveOf(ws, dai.id), 1102)
   })
 
-  await check('指導者が自分から抜けると、どのグループにも入っていない状態に戻る', async () => {
-    await C.sync.leaveWorkspace(true)
+  await check('同期を止めていた端末でも、答える前に、その端末に無い記録を受け取る。「渡さない」と答えると、グループからは消えたまま', async () => {
+    await D.sync.joinWorkspace((await O1.sync.createInvite('client', dai.id)).code)
+    assert.deepEqual(await departed(O1), ['Katsura/given'], '入り直した人は、離れた人の一覧から消える')
+    D.sync.unlink() // 本人が、この端末の同期を止めている
+    D.actions.upsertMany('conditions', [{ ...D.data().conditions.find((x) => x.id === 'c-0002'), memo: 'mine, while paused' }])
+    // そのあいだに、指導者が1件入れ、1件を直す
+    C.actions.saveSession(session('s-c-forD2', { memberId: dai.id, date: '2026-12-04', memo: 'while paused' }))
+    C.actions.upsertMany('conditions', [{ ...C.data().conditions.find((x) => x.id === 'c-0002'), memo: 'coach version' }])
+    await syncAll(C)
+
+    await O1.sync.removePerson(uD.id)
+    await syncAll(D) // つながっていないので、何も起きない
+    assert.ok(!D.data().sessions.some((x) => x.id === 's-c-forD2'))
+    const [h] = plain(await D.sync.myHandovers())
+    assert.equal(h.records, 1103)
+
+    await D.sync.resolveHandover(h, false)
+    assert.equal(D.data().sessions.find((x) => x.id === 's-c-forD2')?.memo, 'while paused', 'この端末に無かった記録は、答える前に届く')
+    assert.equal(D.data().conditions.find((x) => x.id === 'c-0002')?.memo, 'mine, while paused', 'この端末にある記録は、上書きしない')
+    assert.equal(D.data().conditions.length, 1101)
+    assert.deepEqual([await liveOf(ws, dai.id), await heldCount(ws, uD)], [0, 0], 'グループからは消えたまま。預かりも消える')
+    assert.deepEqual(plain(await D.sync.myHandovers()), [])
+    await syncAll(O1, C)
+    for (const dev of [O1, C]) {
+      assert.equal(daiConditions(dev), 0)
+      assert.ok(!dev.data().sessions.some((x) => x.memberId === dai.id))
+      assert.ok(dev.data().members.some((m) => m.id === dai.id), '人（名前）は残る')
+    }
+    assert.deepEqual(await departed(O1), ['Dai/declined', 'Katsura/given'])
+    // 渡さなかった記録は、管理者が同じIDで入れ直そうとしても、グループに戻らない
+    O1.actions.upsertMany('conditions', [{ id: 'c-0003', memberId: dai.id, date: '2026-10-01', sleep: 7, memo: 'put back by owner' }])
+    await syncAll(O1)
+    assert.equal(O1.st().rejected, 1)
+    assert.equal(await liveOf(ws, dai.id), 0)
+    assert.equal(daiConditions(O1), 0, '断られた記録は、管理者の端末からも消える')
+  })
+
+  await check('まだ同期したことのない別の端末で答えたときは、その端末には何も入れない。同期していた端末の記録は、そのまま残る', async () => {
+    const uG = await makeUser('gen')
+    const gen = O1.actions.addMember('Gen', false)
+    const G1 = makeDevice(uG)
+    G1.actions.saveSession(session('s-g-own', { memo: 'mine' }))
+    await G1.sync.joinWorkspace((await O1.sync.createInvite('client', gen.id)).code)
+    await O1.sync.removePerson(uG.id)
+    const G2 = makeDevice(uG) // 同じ人の、同期したことのない端末
+    const [h] = plain(await G2.sync.myHandovers())
+    assert.deepEqual([h.member_name, h.records], ['Gen', 1])
+    await G2.sync.resolveHandover(h, false)
+    assert.deepEqual([G2.data().sessions.length, names(G2)], [0, ['自分']], '入れる先の人がいない端末には、何も入れない')
+    // 同期していた端末は、次の同期で、外れたと分かる。記録はそのまま残り、もう聞かれない
+    await syncAll(G1)
+    assert.equal(G1.st().workspaceId, undefined)
+    assert.match(G1.st().notice ?? '', /この端末の記録は、そのまま残っています/)
+    assert.deepEqual(ids(G1.data().sessions), ['s-g-own'])
+    assert.deepEqual(plain(await G1.sync.myHandovers()), [])
+    assert.equal(await liveOf(ws, gen.id), 0)
+  })
+
+  // ───── 指導者が自分から抜ける ─────
+  await check('指導者が自分から抜けると、まだ送っていない記録を届けてから抜け、その端末からグループの記録が消える', async () => {
+    C.actions.saveSession(session('s-c-last', { memberId: ryotaId, date: '2026-12-05', memo: 'not yet sent' }))
+    await tick()
+    await C.sync.leaveWorkspace()
     assert.equal(C.st().workspaceId, undefined)
+    assert.match(C.st().notice ?? '', /から抜けました。この端末にあったグループの記録を消しました/)
     assert.deepEqual(plain(await C.sync.myWorkspaces()), [])
-    assert.ok(C.data().sessions.length > 0, 'この端末の記録は消さない')
+    assert.deepEqual(names(C), ['自分'], 'この端末が持ち込んだ人はいないので、最初の状態に戻る')
+    assert.deepEqual([C.data().sessions.length, C.data().conditions.length, C.data().bodies.length], [0, 0, 0])
+    assert.deepEqual(C.data().profile, { name: '', sport: '' })
+    assert.equal((await server(ws, `id = 's-c-last'`))[0]?.data.memo, 'not yet sent', '抜ける前に、グループへ届いている')
+    await syncAll(O1)
+    assert.ok(['s-c-last', 's-r1', 's-c1'].every((id) => O1.data().sessions.some((x) => x.id === id)), 'グループの記録は変わらない')
+    assert.deepEqual(await departed(O1), ['Gen/declined', 'Dai/declined', 'Katsura/given'], '離れた本人の一覧に、指導者は出ない')
+  })
+
+  await check('指導者が抜けると、その人の別の端末からもグループの記録が消える。参加する前から持っていた人の記録は残る', async () => {
+    const uF = await makeUser('coach3')
+    const F = makeDevice(uF)
+    F.actions.renameMember('me', 'Fumi')
+    F.actions.saveSession(session('s-f-own', { memo: 'mine' }))
+    await F.sync.joinWorkspace((await O1.sync.createInvite('coach')).code)
+    const F2 = makeDevice(uF) // 同じ人の2台目（何も入っていない端末）
+    await F2.sync.resumeWorkspace(plain(await F2.sync.myWorkspaces())[0])
+    assert.ok(F2.data().sessions.some((x) => x.id === 's-r1') && F2.data().sessions.some((x) => x.id === 's-f-own'))
+
+    await F.sync.leaveWorkspace()
+    assert.deepEqual(names(F), ['Fumi'], '参加する前からこの端末にいた人は残る')
+    assert.deepEqual(ids(F.data().sessions), ['s-f-own'])
+    // 2台目は、次の同期で、抜けたと分かる
+    await syncAll(F2)
+    assert.equal(F2.st().workspaceId, undefined)
+    assert.match(F2.st().notice ?? '', /この端末にあったグループの記録を消しました/)
+    assert.deepEqual([names(F2), F2.data().sessions.length], [['自分'], 0])
+    assert.equal(await count(`workspace_id = $1 and id = 's-f-own' and not deleted`, [ws]), 1, 'グループに送った記録は、グループに残る')
   })
 
   await check('使用済み・でたらめな招待コードは、分かる言葉で断る', async () => {

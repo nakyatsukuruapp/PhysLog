@@ -3,9 +3,9 @@ import type { Session } from '@supabase/supabase-js'
 import { ConfirmButton, toast } from './ui'
 import { useRawData } from '../store'
 import {
-  ROLE_LABEL, clearNotice, createInvite, createWorkspace, inviteInfo, joinWorkspace, leaveWorkspace, linkedMemberIds, listInvites, listPeople,
-  myWorkspaces, removePerson, resumeWorkspace, revokeInvite, sb, session, signIn, signOut, signUp, syncNow, unlink, useSyncState,
-  type Invite, type InviteInfo, type InviteRow, type MyWorkspace, type Person,
+  ROLE_LABEL, clearNotice, createInvite, createWorkspace, inviteInfo, joinWorkspace, leaveWorkspace, linkedMemberIds, listDeparted, listInvites, listPeople,
+  myHandovers, myWorkspaces, removePerson, resolveHandover, resumeWorkspace, revokeInvite, sb, session, signIn, signOut, signUp, syncNow, unlink, useSyncState,
+  type Departed, type Handover, type HandoverState, type Invite, type InviteInfo, type InviteRow, type MyWorkspace, type Person,
 } from '../lib/sync'
 
 type Run = (f: () => Promise<unknown>, ok?: string) => Promise<boolean>
@@ -14,6 +14,12 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : (e as { mess
 /** 招待コードは5文字ずつに区切って見せる（入力のときは、区切りや小文字があっても通る） */
 const showCode = (c: string) => `${c.slice(0, 5)}-${c.slice(5)}`
 const day = (iso: string) => new Date(iso).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })
+/** グループを離れた本人の記録が、いまどうなっているか（管理者・指導者に見せる） */
+const HANDOVER_LABEL: Record<HandoverState, string> = {
+  pending: '本人の返事待ち。渡すと決めるまで、記録は見えません',
+  given: '記録を、実績として受け取りました',
+  declined: '記録は、渡されませんでした',
+}
 
 // 設定画面：端末間の同期と、グループ（管理者・指導者・本人）
 export function SyncCard() {
@@ -43,6 +49,7 @@ export function SyncCard() {
           <button className="btn sm" style={{ marginTop: 8 }} onClick={clearNotice}>閉じる</button>
         </div>
       )}
+      {ses && <Handovers busy={busy} run={run} watch={`${ses.user.id}|${st.workspaceId ?? ''}|${st.notice ?? ''}`} />}
       {!ses ? <Login busy={busy} run={run} />
         : !st.workspaceId ? <Start email={ses.user.email ?? ''} busy={busy} run={run} />
           : <Linked email={ses.user.email ?? ''} busy={busy} run={run} />}
@@ -66,6 +73,39 @@ function Login(props: { busy: boolean; run: Run }) {
         <button className="btn sm" disabled={off}
           onClick={() => props.run(async () => { const s = await signUp(email, pw); if (!s) throw new Error('確認メールを送りました。メールのリンクを押してから「ログイン」してください') }, '登録しました')}>はじめて使う（登録）</button>
       </div>
+    </>
+  )
+}
+
+/** 管理者に外されたあと：これまでの記録を、実績としてグループに渡すかどうかを、本人が選ぶ */
+function Handovers(props: { busy: boolean; run: Run; watch: string }) {
+  const { busy, run } = props
+  const [list, setList] = useState<Handover[]>([])
+  const reload = useCallback(() => myHandovers().then(setList).catch(() => {}), [])
+  useEffect(() => { reload() }, [reload, props.watch])
+  const answer = (h: Handover, give: boolean) => {
+    run(async () => { await resolveHandover(h, give); await reload() }, give ? '実績として渡しました' : '渡さずに終わりました')
+  }
+  return (
+    <>
+      {list.map((h) => (
+        <div key={h.workspace_id} className="card" style={{ background: 'var(--fill2)', margin: '0 0 10px', padding: 12 }}>
+          <div style={{ lineHeight: 1.7 }}>
+            「<b>{h.workspace_name}</b>」から外れました。これまでの記録（{h.member_name ?? 'あなた'} さんの {h.records}件）を、<b>実績としてグループに渡しますか。</b>
+          </div>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+            {busy ? <span className="sub">送信中…</span> : (
+              <>
+                <ConfirmButton className="btn sm primary" label="実績として渡す" confirmLabel="もう一度押すと渡します" onConfirm={() => answer(h, true)} />
+                <ConfirmButton className="btn sm" label="渡さない" confirmLabel="もう一度押すと、渡さずに終わります" onConfirm={() => answer(h, false)} />
+              </>
+            )}
+          </div>
+          <div className="sub" style={{ lineHeight: 1.7, marginTop: 8 }}>
+            どちらを選んでも、あなたの記録は、同期していた端末に残ります。答えるまで、グループの管理者と指導者からは見えません。「渡す」と、管理者と指導者が、これまでの記録を引き続き読めるようになります。「渡さない」と、グループからは消えたままになります。あとから変えることはできません。
+          </div>
+        </div>
+      ))}
     </>
   )
 }
@@ -119,8 +159,8 @@ function Start(props: { email: string; busy: boolean; run: Run }) {
           <div style={{ lineHeight: 1.7 }}>「<b>{info.workspace_name}</b>」に、<b>{ROLE_LABEL[info.role]}</b>として参加します。</div>
           <div className="sub" style={{ lineHeight: 1.7, margin: '6px 0 10px' }}>
             {info.role === 'client'
-              ? `${info.member_name ?? 'あなた'} さんの記録として同期します。この端末でいま選んでいる人（${activeName}）の記録が送られ、グループの管理者と指導者が読み書きできるようになります。あなたに見えるのは、自分の記録だけです。`
-              : 'グループ全員の記録を読み書きできるようになります。この端末の記録（全員分）も、グループに送られます。管理者があなたを外すときは、この端末にあるグループの記録を消すことを選べます（参加する前からこの端末にあった人の記録は残ります）。'}
+              ? `${info.member_name ?? 'あなた'} さんの記録として同期します。この端末でいま選んでいる人（${activeName}）の記録が送られ、グループの管理者と指導者が読み書きできるようになります。あなたに見えるのは、自分の記録だけです。グループを離れるときは、記録をこの端末に残したまま、実績として渡すかどうかを選べます。`
+              : 'グループ全員の記録を読み書きできるようになります。この端末の記録（全員分）も、グループに送られます。グループから抜けると、この端末からグループの記録が消えます。管理者があなたを外すときは、消すかどうかを管理者が選びます（どちらの場合も、参加する前からこの端末にあった人の記録は残ります）。'}
           </div>
           {info.already_member ? (
             <div className="sub">このグループには、すでに参加しています。上の「参加中のグループ」から始めてください。</div>
@@ -164,10 +204,10 @@ function Linked(props: { email: string; busy: boolean; run: Run }) {
         {st.rejected ? <><br />権限がなく送れなかった記録：{st.rejected}件</> : null}
       </div>
       {st.role === 'client' && (
-        <div className="sub" style={{ lineHeight: 1.7, marginTop: 8 }}>自分（{me ?? '本人'}）の記録だけを同期しています。グループの管理者と指導者も、この記録を読み書きできます。</div>
+        <div className="sub" style={{ lineHeight: 1.7, marginTop: 8 }}>自分（{me ?? '本人'}）の記録だけを同期しています。グループの管理者と指導者も、この記録を読み書きできます。グループを離れるとき（抜ける・外される）は、記録をこの端末に残したまま、実績として渡すかどうかを選べます。</div>
       )}
       {st.role === 'coach' && (
-        <div className="sub" style={{ lineHeight: 1.7, marginTop: 8 }}>グループ全員の記録を読み書きできます。本人を招くこともできます。指導者を招く・人を外すのは、管理者だけができます。管理者があなたを外すときは、この端末にあるグループの記録を消すことを選べます（参加する前からこの端末にあった人の記録は残ります）。</div>
+        <div className="sub" style={{ lineHeight: 1.7, marginTop: 8 }}>グループ全員の記録を読み書きできます。本人を招くこともできます。指導者を招く・人を外すのは、管理者だけができます。グループから抜けると、この端末からグループの記録が消えます。管理者があなたを外すときは、消すかどうかを管理者が選びます（どちらの場合も、参加する前からこの端末にあった人の記録は残ります）。</div>
       )}
       {(st.role === 'owner' || st.role === 'coach') && <StaffTools owner={st.role === 'owner'} busy={busy} run={run} />}
       <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
@@ -177,19 +217,19 @@ function Linked(props: { email: string; busy: boolean; run: Run }) {
       </div>
       {st.role === 'coach' && (
         <ConfirmButton className="btn sm danger" style={{ marginTop: 10 }} label="このグループから抜ける"
-          confirmLabel="もう一度押すと抜けます（記録はグループに残ります）" onConfirm={() => { run(() => leaveWorkspace(true), 'グループから抜けました') }} />
+          confirmLabel="もう一度押すと抜けます（この端末から、グループの記録が消えます）" onConfirm={() => { run(() => leaveWorkspace(), 'グループから抜けました') }} />
       )}
       {st.role === 'client' && (
         <>
-          <label className="label">グループから抜ける</label>
+          <label className="label">グループから抜ける（記録を実績として渡すか選ぶ）</label>
           <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-            <ConfirmButton className="btn sm" label="記録を残して抜ける" confirmLabel="もう一度押すと抜けます"
-              onConfirm={() => { run(() => leaveWorkspace(true), 'グループから抜けました（記録は残しました）') }} />
-            <ConfirmButton className="btn sm danger" label="記録を消して抜ける" confirmLabel="もう一度押すと、記録を消して抜けます"
-              onConfirm={() => { run(() => leaveWorkspace(false), 'グループから記録を消して抜けました') }} />
+            <ConfirmButton className="btn sm" label="実績として渡して抜ける" confirmLabel="もう一度押すと、渡して抜けます"
+              onConfirm={() => { run(() => leaveWorkspace(true), 'グループから抜けました（記録は、実績として渡しました）') }} />
+            <ConfirmButton className="btn sm" label="渡さずに抜ける" confirmLabel="もう一度押すと、渡さずに抜けます"
+              onConfirm={() => { run(() => leaveWorkspace(false), 'グループから抜けました（記録は渡していません）') }} />
           </div>
           <div className="sub" style={{ lineHeight: 1.7, marginTop: 8 }}>
-            どちらを選んでも、この端末の記録は残ります。「消して抜ける」では、グループに預けた自分の記録が消え、管理者と指導者の画面からも、次の同期で消えます。相手がすでに書き出したバックアップまでは消せません。
+            どちらを選んでも、この端末には自分の記録が残ります。「渡さずに抜ける」では、グループに預けた自分の記録が消え、管理者と指導者の画面からも、次の同期で消えます。「実績として渡して抜ける」では、これまでの記録がグループに残り、管理者と指導者が引き続き読めます。相手がすでに書き出したバックアップまでは消せません。
           </div>
         </>
       )}
@@ -206,12 +246,15 @@ function StaffTools(props: { owner: boolean; busy: boolean; run: Run }) {
   const [invites, setInvites] = useState<InviteRow[]>([])
   const [issued, setIssued] = useState<Invite | null>(null)
   const [target, setTarget] = useState('')
-  const [removing, setRemoving] = useState('') // 外そうとしている指導者（user_id）
+  const [departed, setDeparted] = useState<Departed[]>([])
+  const [removing, setRemoving] = useState('') // 外そうとしている人（user_id）
 
   const reload = useCallback(async () => {
     // 参加している人の一覧（メールアドレスつき）は管理者だけ。指導者は、結びつき済みの人だけを知る
-    const [p, ids, i] = await Promise.all([owner ? listPeople() : Promise.resolve<Person[]>([]), owner ? Promise.resolve<string[]>([]) : linkedMemberIds(), listInvites()])
-    setPeople(p); setLinked(ids); setInvites(i)
+    const [p, ids, i, d] = await Promise.all([
+      owner ? listPeople() : Promise.resolve<Person[]>([]), owner ? Promise.resolve<string[]>([]) : linkedMemberIds(), listInvites(), listDeparted(),
+    ])
+    setPeople(p); setLinked(ids); setInvites(i); setDeparted(d)
   }, [owner])
   useEffect(() => { reload().catch(() => {}) }, [reload])
 
@@ -227,6 +270,11 @@ function StaffTools(props: { owner: boolean; busy: boolean; run: Run }) {
   const removeCoach = (userId: string, wipeDevice: boolean) => run(
     async () => { await removePerson(userId, wipeDevice); setRemoving(''); await reload() },
     wipeDevice ? '外しました（相手の端末の記録も消します）' : '外しました（相手の端末の記録は残ります）',
+  )
+  // 本人を外す。その人の記録はグループから見えなくなり、渡すかどうかは本人が選ぶ。この端末からも消えるよう、続けて同期する
+  const removeClient = (userId: string) => run(
+    async () => { await removePerson(userId); setRemoving(''); await reload(); await syncNow().catch(() => {}) },
+    '外しました（記録は、本人が渡すと決めるまで見えません）',
   )
 
   return (
@@ -274,15 +322,23 @@ function StaffTools(props: { owner: boolean; busy: boolean; run: Run }) {
                   {p.role === 'client' && <span className="sub">　本人</span>}
                   <div className="sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.email}</div>
                 </div>
-                {p.role === 'client' && (
-                  <ConfirmButton className="chip" label="外す" confirmLabel="もう一度押すと外します"
-                    onConfirm={() => { run(async () => { await removePerson(p.user_id); await reload() }, '外しました（記録はグループに残ります）') }} />
-                )}
-                {p.role === 'coach' && (
+                {p.role !== 'owner' && (
                   <button className={`chip ${removing === p.user_id ? 'on' : ''}`} disabled={busy} onClick={() => setRemoving(removing === p.user_id ? '' : p.user_id)}>外す</button>
                 )}
               </div>
-              {removing === p.user_id && (
+              {removing === p.user_id && p.role === 'client' && (
+                <div className="card" style={{ background: 'var(--fill2)', margin: '8px 0 10px', padding: 12 }}>
+                  <div style={{ lineHeight: 1.7 }}>{nameOf(p.member_id)} さんを外すと、この人の記録は、グループから見えなくなります。</div>
+                  <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                    <button className="btn sm danger" disabled={busy} onClick={() => removeClient(p.user_id)}>外す</button>
+                    <button className="btn sm" disabled={busy} onClick={() => setRemoving('')}>やめる</button>
+                  </div>
+                  <div className="sub" style={{ lineHeight: 1.7, marginTop: 8 }}>
+                    記録は、本人の端末に残ります。本人が「実績として渡す」を選んだときだけ、グループに戻ります。「渡さない」を選ぶと、戻りません。管理者と指導者の端末からは、次の同期で消えます。すでに書き出したバックアップには残ります。
+                  </div>
+                </div>
+              )}
+              {removing === p.user_id && p.role === 'coach' && (
                 <div className="card" style={{ background: 'var(--fill2)', margin: '8px 0 10px', padding: 12 }}>
                   <div style={{ lineHeight: 1.7 }}>この指導者の端末に残っている、グループの記録をどうしますか。</div>
                   <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
@@ -310,6 +366,20 @@ function StaffTools(props: { owner: boolean; busy: boolean; run: Run }) {
                 <div className="sub">期限 {day(i.expires_at)}</div>
               </div>
               <button className="chip" disabled={busy} onClick={() => run(async () => { await revokeInvite(i.id); await reload() }, '取り消しました')}>取り消す</button>
+            </div>
+          ))}
+        </>
+      )}
+
+      {departed.length > 0 && (
+        <>
+          <label className="label">グループを離れた本人</label>
+          {departed.map((d) => (
+            <div key={`${d.member_id}|${d.departed_at}`} className="list-item">
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <b>{d.member_name ?? nameOf(d.member_id)}</b>
+                <div className="sub" style={{ lineHeight: 1.6 }}>{day(d.resolved_at ?? d.departed_at)}　{HANDOVER_LABEL[d.handover]}</div>
+              </div>
             </div>
           ))}
         </>
