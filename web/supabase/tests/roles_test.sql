@@ -1,4 +1,4 @@
--- PhysLog：役割ごとの権限のテスト（owner・coach・client 3人・部外者・ログインなし）
+-- PhysLog：役割ごとの権限のテスト（owner・coach 2人・client 3人・部外者・ログインなし）
 --
 -- テスト用の利用者と記録を、1つの処理の中で作り、最後にわざと例外を出してすべて巻き戻す。
 -- データベースには何も残らない。結果は例外の本文に入る（ROLLBACK_OK pass=… fail=…）。
@@ -7,7 +7,7 @@
 -- 本番で流す：  このファイルの中身をそのまま SQL として実行する（失敗した行だけが返る）
 --
 -- 1行の形：  誰が | 期待 | 説明 | SQL
---   誰が … O=owner  C=coach  A・B・D=client（D は指導者が招く）  X=部外者（ログイン済み）  N=ログインなし  P=管理者（権限の確認用）
+--   誰が … O=owner  C・E=coach  A・B・D=client（D は指導者が招く）  X=部外者（ログイン済み）  N=ログインなし  P=管理者（権限の確認用）
 --   期待 … rows=件数 / val=値 / save=名前（値を {名前} として後で使う） / err=SQLSTATE / msg=エラー文の一部
 --   SQL  … UPSERT <コレクション> <id> <JSON> ＝アプリの同期と同じ形の upsert、TOMB <コレクション> <id> ＝削除（data を null に）、
 --           IDS ＝そのグループで見える記録の一覧、COUNT ＝その件数
@@ -229,6 +229,7 @@ declare
     $s$A | val= | 外された本人は読めない | IDS$s$,
     $s$A | err=42501 | 外された本人は書けない | UPSERT sessions sA7 {"id":"sA7","memberId":"mA"}$s$,
     $s$A | val=A own/owner | 外された本人に残るのは、自分のグループだけ | select string_agg(name || '/' || role, ',') from public.my_workspaces()$s$,
+    $s$A | val=false | 本人を外したときは、端末の記録を消す知らせは出ない | select public.my_departure('{ws}')::text$s$,
     $s$O | val=6 | 外しても、その人の記録は残る | select count(*)::text from public.records where workspace_id = '{ws}' and member_id = 'mA'$s$,
     $s$B | rows=1 | 本人Bが、何も指定せずに抜ける（＝記録を残す） | select public.leave_workspace('{ws}')$s$,
     $s$B | val= | 抜けた本人は読めない | IDS$s$,
@@ -240,10 +241,38 @@ declare
     $s$O | rows=1 | owner が人（B）を消す | TOMB members mB$s$,
     $s$P | val=mB/true | 消した人の行も、その人のものとして残る | select member_id || '/' || deleted from public.records where workspace_id = '{ws}' and collection = 'members' and id = 'mB'$s$,
     $s$O | msg=member not found | 消した人あての招待は作れない | select public.create_invite('{ws}', 'client', 'mB')$s$,
+    -- ───── 指導者を外すとき、相手の端末の記録を残すか消すかを、外す側（残る側）が選ぶ ─────
+    $s$O | save=codeE | 2人目の指導者を招く | select public.create_invite('{ws}', 'coach') ->> 'code'$s$,
+    $s$E | val={ws} | 2人目の指導者が参加する | select (public.join_workspace('{codeE}')).id::text$s$,
+    $s$E | val=false | 参加しているあいだは、端末の記録を消す知らせはない | select public.my_departure('{ws}')::text$s$,
+    $s$C | msg=not allowed | 指導者は、ほかの指導者を外せない | select public.remove_member('{ws}', '{uE}', true)$s$,
+    $s$A | msg=not allowed | 本人は、指導者を外せない | select public.remove_member('{ws}', '{uE}', true)$s$,
+    $s$O | rows=1 | owner が「相手の端末の記録も消して外す」を選ぶ | select public.remove_member('{ws}', '{uE}', true)$s$,
+    $s$E | val=true | 外された指導者に、端末の記録を消す知らせが届く | select public.my_departure('{ws}')::text$s$,
+    $s$C | val=false | その知らせは、ほかの指導者には届かない | select public.my_departure('{ws}')::text$s$,
+    $s$X | val=false | その知らせは、部外者には届かない | select public.my_departure('{ws}')::text$s$,
+    $s$E | val= | 外された指導者は読めない | IDS$s$,
+    $s$E | err=42501 | 知らせの表は、直接読めない | select count(*) from public.departures$s$,
+    $s$O | err=42501 | owner も、知らせの表は直接さわれない | update public.departures set wipe_device = false$s$,
+    $s$O | save=codeE2 | 外した指導者を、もう一度招く | select public.create_invite('{ws}', 'coach') ->> 'code'$s$,
+    $s$E | val={ws} | 外された指導者が入り直す | select (public.join_workspace('{codeE2}')).id::text$s$,
+    $s$E | val=false | 入り直したら、前の知らせは無効になる | select public.my_departure('{ws}')::text$s$,
+    $s$O | rows=1 | owner が「相手の端末に記録を残して外す」を選ぶ | select public.remove_member('{ws}', '{uE}', false)$s$,
+    $s$E | val=false | 残して外したときは、消す知らせは届かない | select public.my_departure('{ws}')::text$s$,
+    $s$O | save=codeE3 | もう一度招く | select public.create_invite('{ws}', 'coach') ->> 'code'$s$,
+    $s$E | val={ws} | もう一度入る | select (public.join_workspace('{codeE3}')).id::text$s$,
+    $s$O | rows=1 | owner が、何も指定せずに外す（＝残す） | select public.remove_member('{ws}', '{uE}')$s$,
+    $s$E | val=false | 何も指定しないときも、消す知らせは届かない | select public.my_departure('{ws}')::text$s$,
+    $s$O | val=3 | 外したあとの参加者は owner・指導者・本人A | select count(*)::text from public.list_members('{ws}')$s$,
+
     $s$P | val=9 | 指導者が抜ける前の、消えていない記録の数（人3・profile 1・体組成2・セッション3） | select count(*)::text from public.records where workspace_id = '{ws}' and not deleted$s$,
     $s$C | rows=1 | 指導者が「消す」を選んで抜ける | select public.leave_workspace('{ws}', false)$s$,
     $s$P | val=9 | 指導者が「消す」を選んでも、記録は消えない | select count(*)::text from public.records where workspace_id = '{ws}' and not deleted$s$,
     $s$C | val= | 抜けた指導者は読めない | IDS$s$,
+    $s$C | val=false | 自分から抜けたときは、端末の記録を消す知らせは出ない | select public.my_departure('{ws}')::text$s$,
+    $s$O | rows=1 | owner が本人Aを「消して外す」で外す | select public.remove_member('{ws}', '{uA}', true)$s$,
+    $s$A | val=false | 本人の端末にあるのは本人の記録だけなので、消す知らせは出ない | select public.my_departure('{ws}')::text$s$,
+    $s$P | val=4 | 外しても、本人Aの記録はグループに残る | select count(*)::text from public.records where workspace_id = '{ws}' and member_id = 'mA' and not deleted$s$,
     $s$C | err=42501 | 抜けた指導者は書けない | UPSERT sessions sC1 {"id":"sC1","memberId":"mA"}$s$,
 
     -- ───── 1000件を超える受け取り ─────
@@ -259,7 +288,9 @@ declare
     $s$N | err=42501 | ログインなしで自分のグループを聞く | select count(*) from public.my_workspaces()$s$,
     $s$N | err=42501 | ログインなしで参加者の一覧を聞く | select count(*) from public.list_members('{ws}')$s$,
     $s$N | err=42501 | ログインなしで、結びつき済みの人を聞く | select count(*) from public.linked_member_ids('{ws}')$s$,
-    $s$N | err=42501 | ログインなしで「消して抜ける」を呼ぶ | select public.leave_workspace('{ws}', false)$s$
+    $s$N | err=42501 | ログインなしで「消して抜ける」を呼ぶ | select public.leave_workspace('{ws}', false)$s$,
+    $s$N | err=42501 | ログインなしで、外された知らせを聞く | select public.my_departure('{ws}')$s$,
+    $s$N | err=42501 | ログインなしで人を外す | select public.remove_member('{ws}', '{uO}', true)$s$
   ];
   upsert_tail constant text := ' on conflict (workspace_id, collection, id) do update set workspace_id = excluded.workspace_id, collection = excluded.collection, id = excluded.id, data = excluded.data, deleted = excluded.deleted';
   show_all boolean := coalesce(nullif(current_setting('physlog.test_verbose', true), ''), 'off') = 'on';
@@ -269,7 +300,7 @@ declare
   res text := ''; pass integer := 0; fail integer := 0;
 begin
   -- テスト用の利用者（最後の例外で巻き戻る）
-  vars := jsonb_build_object('uO', gen_random_uuid(), 'uC', gen_random_uuid(), 'uA', gen_random_uuid(), 'uB', gen_random_uuid(), 'uD', gen_random_uuid(), 'uX', gen_random_uuid());
+  vars := jsonb_build_object('uO', gen_random_uuid(), 'uC', gen_random_uuid(), 'uA', gen_random_uuid(), 'uB', gen_random_uuid(), 'uD', gen_random_uuid(), 'uE', gen_random_uuid(), 'uX', gen_random_uuid());
   for k in select jsonb_object_keys(vars) loop
     insert into auth.users (id, email) values ((vars ->> k)::uuid, 'physlog-roles-test-' || (vars ->> k) || '@example.invalid');
   end loop;

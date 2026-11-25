@@ -1,6 +1,7 @@
 -- PhysLog：役割分け（owner・coach・client）と、1回きり・期限つきの招待
 --
---   owner  … グループを作った人。全員の記録を読み書きでき、人（指導者・本人）を招く・外すができる
+--   owner  … グループを作った人。全員の記録を読み書きでき、人（指導者・本人）を招く・外すができる。
+--            指導者を外すとき、その人の端末に残っているグループの記録を消すかどうかを選べる
 --   coach  … 指導者。全員の記録を読み書きでき、本人を招ける（指導者を招く・人を外すのは owner だけ）
 --   client … 本人。自分の記録だけ読み書きできる。抜けるときに、自分の記録をグループに残すか消すかを選べる
 --
@@ -143,6 +144,21 @@ create index invites_workspace_idx on public.invites (workspace_id, created_at d
 alter table public.invites enable row level security;
 -- 行の方針は置かない（表を直接は読ませない。owner も関数 list_invites を通す）
 
+-- 外された人への知らせ。指導者を外すとき、外す側（グループに残る側）が、その人の端末に残っているグループの記録を
+-- 消すかどうかを選ぶ（wipe_device）。外された人の端末は、次に同期しようとしたときにこれを読んで従う。
+-- 入り直したら、知らせは消える
+create table public.departures (
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  wipe_device boolean not null default false,
+  departed_at timestamptz not null default now(),
+  removed_by uuid references auth.users(id) on delete set null,
+  primary key (workspace_id, user_id)
+);
+comment on table public.departures is '外された人への知らせ。wipe_device が true なら、その人の端末は、グループの記録を端末から消す';
+alter table public.departures enable row level security;
+-- 行の方針は置かない（関数 remove_member・my_departure だけがさわる）
+
 -- ───────── 5. 行ごとの権限（RLS） ─────────
 
 -- 記録：owner・coach は全件、client は自分の member_id の行だけ
@@ -193,7 +209,7 @@ alter policy "leave workspace" on public.workspace_members
   using (user_id = (select auth.uid()) and role <> 'owner');
 
 -- 表への権限は必要な分だけにする（ログインしていない人には何も渡さない）
-revoke all on public.workspaces, public.workspace_members, public.records, public.invites from anon, authenticated;
+revoke all on public.workspaces, public.workspace_members, public.records, public.invites, public.departures from anon, authenticated;
 grant select on public.workspaces to authenticated;
 grant update (name) on public.workspaces to authenticated;
 grant select, insert, update on public.records to authenticated;
@@ -232,6 +248,8 @@ begin
   end if;
   insert into public.workspace_members (workspace_id, user_id, role, member_id)
     values (inv.workspace_id, auth.uid(), inv.role, inv.member_id);
+  -- 前に外されたときの知らせ（端末の記録を消す、など）は、入り直したら無効にする
+  delete from public.departures d where d.workspace_id = inv.workspace_id and d.user_id = auth.uid();
   update public.invites set used_by = auth.uid(), used_at = now() where id = inv.id;
   select * into w from public.workspaces where id = inv.workspace_id;
   return w;
@@ -345,15 +363,29 @@ language sql stable security definer set search_path = '' as $$
    where m.workspace_id = ws and m.member_id is not null and private.my_role(ws) in ('owner', 'coach')
 $$;
 
--- coach・client を外す（owner だけ）。記録は残る
-create or replace function public.remove_member(ws uuid, target uuid) returns void
+-- coach・client を外す（owner だけ）。記録はグループに残る。
+-- 指導者を外すときは、その人の端末に残っているグループの記録を消すかどうかを、外す側が選ぶ（wipe_device。何も指定しなければ残す）。
+-- 本人（client）の端末にあるのは本人の記録だけなので、本人を外すときは消さない
+create or replace function public.remove_member(ws uuid, target uuid, wipe_device boolean default false) returns void
 language plpgsql security definer set search_path = '' as $$
+declare gone text;
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
   if private.my_role(ws) is distinct from 'owner' then raise exception 'not allowed'; end if;
-  delete from public.workspace_members m where m.workspace_id = ws and m.user_id = target and m.role <> 'owner';
-  if not found then raise exception 'member not found'; end if;
+  delete from public.workspace_members m where m.workspace_id = ws and m.user_id = target and m.role <> 'owner'
+    returning m.role into gone;
+  if gone is null then raise exception 'member not found'; end if;
+  insert into public.departures (workspace_id, user_id, wipe_device, removed_by)
+    values (ws, target, gone = 'coach' and coalesce(wipe_device, false), auth.uid())
+    on conflict (workspace_id, user_id) do update
+      set wipe_device = excluded.wipe_device, departed_at = now(), removed_by = excluded.removed_by;
 end $$;
+
+-- 外された人の端末が読む知らせ：端末にあるグループの記録を消すように、外した側が選んだか
+create or replace function public.my_departure(ws uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select coalesce((select d.wipe_device from public.departures d where d.workspace_id = ws and d.user_id = auth.uid()), false)
+$$;
 
 -- 自分から抜ける（owner は抜けられない）。
 -- 本人（client）は、自分の記録をグループに残すか消すかを選べる（何も指定しなければ残す）。
@@ -407,7 +439,8 @@ revoke all on function public.create_invite(uuid, text, text, integer) from publ
 revoke all on function public.revoke_invite(uuid) from public, anon;
 revoke all on function public.list_invites(uuid) from public, anon;
 revoke all on function public.list_members(uuid) from public, anon;
-revoke all on function public.remove_member(uuid, uuid) from public, anon;
+revoke all on function public.remove_member(uuid, uuid, boolean) from public, anon;
+revoke all on function public.my_departure(uuid) from public, anon;
 revoke all on function public.linked_member_ids(uuid) from public, anon;
 revoke all on function public.leave_workspace(uuid, boolean) from public, anon;
 revoke all on function public.my_workspaces() from public, anon;
@@ -419,7 +452,8 @@ grant execute on function public.create_invite(uuid, text, text, integer) to aut
 grant execute on function public.revoke_invite(uuid) to authenticated;
 grant execute on function public.list_invites(uuid) to authenticated;
 grant execute on function public.list_members(uuid) to authenticated;
-grant execute on function public.remove_member(uuid, uuid) to authenticated;
+grant execute on function public.remove_member(uuid, uuid, boolean) to authenticated;
+grant execute on function public.my_departure(uuid) to authenticated;
 grant execute on function public.linked_member_ids(uuid) to authenticated;
 grant execute on function public.leave_workspace(uuid, boolean) to authenticated;
 grant execute on function public.my_workspaces() to authenticated;
