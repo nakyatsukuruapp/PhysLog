@@ -9,7 +9,7 @@
 | `20261122124941_physlog_sync_init.sql` | グループ・参加者・記録の表と、同期の基本 | 済み |
 | `20261122124959_move_is_member_private.sql` | 判定用の関数を private へ | 済み |
 | `20261122125144_records_realtime.sql` | 記録の変更をすぐ届ける設定 | 済み |
-| `20261124150000_roles_and_invites.sql` | 役割（owner・coach・client）と、1回きり・期限つきの招待 | **まだ**（2026-11-24 時点） |
+| `20261124150000_roles_and_invites.sql` | 役割（owner・coach・client）、1回きり・期限つきの招待、抜けるときの記録の扱い、取りこぼさない受け取り | **まだ**（2026-11-25 時点） |
 
 - 適用済みの3つは、Supabase に記録されている SQL と同じ内容。
 - `roles_and_invites` を適用したら、ファイル名の番号を、Supabase に記録された版番号に合わせる。
@@ -17,7 +17,7 @@
 
 ## tests/
 
-- `roles_test.sql` … 役割ごとの権限のテスト（owner・coach・client 2人・部外者・ログインなし）。
+- `roles_test.sql` … 役割ごとの権限のテスト（owner・coach・client 3人・部外者・ログインなし）。
   テスト用の利用者と記録を1つの処理の中で作り、最後にわざと例外を出してすべて巻き戻す。結果は例外の本文に入る。
 - `local_stub.sql` … 手元の素の Postgres を Supabase に似せる（ロールと `auth.uid()`）。テスト専用。
 - `run_local.sh` … 手元の Postgres に、マイグレーションを最初から流してテストする。

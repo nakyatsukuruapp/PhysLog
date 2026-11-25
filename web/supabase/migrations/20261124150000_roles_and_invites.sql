@@ -1,8 +1,8 @@
 -- PhysLog：役割分け（owner・coach・client）と、1回きり・期限つきの招待
 --
---   owner  … グループを作った人。全員の記録を読み書きでき、人を招く・外すができる
---   coach  … 指導者。全員の記録を読み書きできる
---   client … 本人。自分の記録だけ読み書きできる
+--   owner  … グループを作った人。全員の記録を読み書きでき、人（指導者・本人）を招く・外すができる
+--   coach  … 指導者。全員の記録を読み書きでき、本人を招ける（指導者を招く・人を外すのは owner だけ）
+--   client … 本人。自分の記録だけ読み書きできる。抜けるときに、自分の記録をグループに残すか消すかを選べる
 --
 -- 「誰の記録か」は records.member_id で判定する（members コレクションの id と同じ値）。
 -- 旧・共通招待コード（workspaces.invite_code。何度でも使えて全権限が付く）は使わない。
@@ -256,7 +256,8 @@ begin
   );
 end $$;
 
--- 招待コードを作る（owner だけ）。コードはこの戻り値でしか見られない
+-- 招待コードを作る。本人（client）の招待は owner と coach、指導者（coach）の招待は owner だけ。
+-- コードはこの戻り値でしか見られない
 create or replace function public.create_invite(ws uuid, invite_role text, invite_member_id text default null, valid_days integer default 7)
 returns jsonb
 language plpgsql security definer set search_path = '' as $$
@@ -268,10 +269,12 @@ declare
   i integer;
   expires timestamptz;
   new_id uuid;
+  r text := private.my_role(ws);
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
-  if private.my_role(ws) is distinct from 'owner' then raise exception 'not allowed'; end if;
+  if r is null or r not in ('owner', 'coach') then raise exception 'not allowed'; end if;
   if invite_role is null or invite_role not in ('coach', 'client') then raise exception 'invalid role'; end if;
+  if invite_role = 'coach' and r <> 'owner' then raise exception 'not allowed'; end if;
   if invite_role = 'client' then
     if coalesce(invite_member_id, '') = '' then raise exception 'member required'; end if;
     if not exists (select 1 from public.records r where r.workspace_id = ws and r.collection = 'members' and r.id = invite_member_id and not r.deleted) then
@@ -297,24 +300,30 @@ begin
   return jsonb_build_object('id', new_id, 'code', c, 'role', invite_role, 'member_id', invite_member_id, 'expires_at', expires);
 end $$;
 
--- 使われていない招待を取り消す（owner だけ）
+-- 使われていない招待を取り消す（owner は全部、coach は自分が作ったものだけ）
 create or replace function public.revoke_invite(target uuid) returns void
 language plpgsql security definer set search_path = '' as $$
-declare ws uuid;
+declare
+  inv public.invites;
+  r text;
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
-  select v.workspace_id into ws from public.invites v where v.id = target;
-  if ws is null or private.my_role(ws) is distinct from 'owner' then raise exception 'not allowed'; end if;
+  select * into inv from public.invites v where v.id = target;
+  r := private.my_role(inv.workspace_id);
+  if inv.id is null or r is null or not (r = 'owner' or (r = 'coach' and inv.created_by = auth.uid())) then
+    raise exception 'not allowed';
+  end if;
   update public.invites v set revoked_at = now() where v.id = target and v.used_at is null and v.revoked_at is null;
 end $$;
 
--- 招待の一覧（owner だけ。取り消したものは出さない）
+-- 招待の一覧（owner は全部、coach は自分が作ったものだけ。取り消したものは出さない）
 create or replace function public.list_invites(ws uuid)
 returns table (id uuid, role text, member_id text, created_at timestamptz, expires_at timestamptz, used_at timestamptz)
 language sql stable security definer set search_path = '' as $$
   select v.id, v.role, v.member_id, v.created_at, v.expires_at, v.used_at
     from public.invites v
-   where v.workspace_id = ws and v.revoked_at is null and private.my_role(ws) = 'owner'
+   where v.workspace_id = ws and v.revoked_at is null
+     and (private.my_role(ws) = 'owner' or (private.my_role(ws) = 'coach' and v.created_by = auth.uid()))
    order by v.created_at desc
    limit 100
 $$;
@@ -329,6 +338,13 @@ language sql stable security definer set search_path = '' as $$
    order by m.joined_at
 $$;
 
+-- アカウントが結びついている人（members の id）。本人を招くとき、まだの人だけを選べるようにする（owner・coach だけ）
+create or replace function public.linked_member_ids(ws uuid) returns setof text
+language sql stable security definer set search_path = '' as $$
+  select m.member_id from public.workspace_members m
+   where m.workspace_id = ws and m.member_id is not null and private.my_role(ws) in ('owner', 'coach')
+$$;
+
 -- coach・client を外す（owner だけ）。記録は残る
 create or replace function public.remove_member(ws uuid, target uuid) returns void
 language plpgsql security definer set search_path = '' as $$
@@ -339,12 +355,24 @@ begin
   if not found then raise exception 'member not found'; end if;
 end $$;
 
--- 自分から抜ける（owner は抜けられない）。記録は残る
-create or replace function public.leave_workspace(ws uuid) returns void
+-- 自分から抜ける（owner は抜けられない）。
+-- 本人（client）は、自分の記録をグループに残すか消すかを選べる（何も指定しなければ残す）。
+-- 消すときは、行を残したまま中身を空にして「削除済み」にする。行そのものを消すと、ほかの端末に削除が届かず、
+-- 古い写しが残って、つなぎ直したときに戻ってきてしまうため。
+-- 人（members）の行は残る。指導者が抜けるときは、どちらを選んでも記録は変わらない
+create or replace function public.leave_workspace(ws uuid, keep_records boolean default true) returns void
 language plpgsql security definer set search_path = '' as $$
+declare
+  r text := private.my_role(ws);
+  mine text := private.my_member_id(ws);
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
-  if private.my_role(ws) = 'owner' then raise exception 'owner cannot leave'; end if;
+  if r = 'owner' then raise exception 'owner cannot leave'; end if;
+  if r = 'client' and mine is not null and not coalesce(keep_records, true) then
+    update public.records x set data = null, deleted = true
+     where x.workspace_id = ws and x.member_id = mine and not x.deleted
+       and x.collection in ('sessions', 'bodies', 'abilities', 'conditions', 'photos', 'activities');
+  end if;
   delete from public.workspace_members m where m.workspace_id = ws and m.user_id = auth.uid();
 end $$;
 
@@ -358,6 +386,20 @@ language sql stable security definer set search_path = '' as $$
    order by m.joined_at
 $$;
 
+-- 記録を受け取る（同期）。前回の続きから、(更新時刻, コレクション, ID) の順に max_rows 件まで返す。
+-- 更新時刻だけで続きを決めると、同じ時刻の記録（1回の送信や、まとめての削除）がページの境目で取りこぼされる。
+-- 呼んだ人の権限（RLS）で読むので、本人に返るのは自分の記録だけ
+create or replace function public.pull_records(ws uuid, after_ts timestamptz default null, after_collection text default '', after_id text default '', max_rows integer default 1000)
+returns table (collection text, id text, data jsonb, deleted boolean, updated_at timestamptz)
+language sql stable set search_path = '' as $$
+  select r.collection, r.id, r.data, r.deleted, r.updated_at
+    from public.records r
+   where r.workspace_id = ws
+     and (after_ts is null or (r.updated_at, r.collection, r.id) > (after_ts, coalesce(after_collection, ''), coalesce(after_id, '')))
+   order by r.updated_at, r.collection, r.id
+   limit least(greatest(coalesce(max_rows, 1000), 1), 1000)
+$$;
+
 revoke all on function public.create_workspace(text) from public, anon;
 revoke all on function public.join_workspace(text) from public, anon;
 revoke all on function public.invite_info(text) from public, anon;
@@ -366,8 +408,10 @@ revoke all on function public.revoke_invite(uuid) from public, anon;
 revoke all on function public.list_invites(uuid) from public, anon;
 revoke all on function public.list_members(uuid) from public, anon;
 revoke all on function public.remove_member(uuid, uuid) from public, anon;
-revoke all on function public.leave_workspace(uuid) from public, anon;
+revoke all on function public.linked_member_ids(uuid) from public, anon;
+revoke all on function public.leave_workspace(uuid, boolean) from public, anon;
 revoke all on function public.my_workspaces() from public, anon;
+revoke all on function public.pull_records(uuid, timestamptz, text, text, integer) from public, anon;
 grant execute on function public.create_workspace(text) to authenticated;
 grant execute on function public.join_workspace(text) to authenticated;
 grant execute on function public.invite_info(text) to authenticated;
@@ -376,5 +420,7 @@ grant execute on function public.revoke_invite(uuid) to authenticated;
 grant execute on function public.list_invites(uuid) to authenticated;
 grant execute on function public.list_members(uuid) to authenticated;
 grant execute on function public.remove_member(uuid, uuid) to authenticated;
-grant execute on function public.leave_workspace(uuid) to authenticated;
+grant execute on function public.linked_member_ids(uuid) to authenticated;
+grant execute on function public.leave_workspace(uuid, boolean) to authenticated;
 grant execute on function public.my_workspaces() to authenticated;
+grant execute on function public.pull_records(uuid, timestamptz, text, text, integer) to authenticated;

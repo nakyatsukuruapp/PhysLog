@@ -1,4 +1,4 @@
--- PhysLog：役割ごとの権限のテスト（owner・coach・client 2人・部外者・ログインなし）
+-- PhysLog：役割ごとの権限のテスト（owner・coach・client 3人・部外者・ログインなし）
 --
 -- テスト用の利用者と記録を、1つの処理の中で作り、最後にわざと例外を出してすべて巻き戻す。
 -- データベースには何も残らない。結果は例外の本文に入る（ROLLBACK_OK pass=… fail=…）。
@@ -7,7 +7,7 @@
 -- 本番で流す：  このファイルの中身をそのまま SQL として実行する（失敗した行だけが返る）
 --
 -- 1行の形：  誰が | 期待 | 説明 | SQL
---   誰が … O=owner  C=coach  A・B=client  X=部外者（ログイン済み）  N=ログインなし  P=管理者（権限の確認用）
+--   誰が … O=owner  C=coach  A・B・D=client（D は指導者が招く）  X=部外者（ログイン済み）  N=ログインなし  P=管理者（権限の確認用）
 --   期待 … rows=件数 / val=値 / save=名前（値を {名前} として後で使う） / err=SQLSTATE / msg=エラー文の一部
 --   SQL  … UPSERT <コレクション> <id> <JSON> ＝アプリの同期と同じ形の upsert、TOMB <コレクション> <id> ＝削除（data を null に）、
 --           IDS ＝そのグループで見える記録の一覧、COUNT ＝その件数
@@ -101,6 +101,18 @@ declare
     $s$B | val=members/mB,sessions/sB1 | ここまでで本人Bに見える記録 | IDS$s$,
     $s$O | val=12 | owner に見える件数 | COUNT$s$,
 
+    -- ───── 受け取る（同期で使う関数。同じ時刻の記録でも取りこぼさない） ─────
+    $s$O | val=12 | 受け取りの関数でも、owner は全件 | select count(*)::text from public.pull_records('{ws}')$s$,
+    $s$C | val=12 | 受け取りの関数でも、指導者は全件 | select count(*)::text from public.pull_records('{ws}')$s$,
+    $s$A | val=bodies/bA1,members/mA,sessions/sA1,sessions/sA2,sessions/sA6,sessions/sA9 | 受け取りの関数でも、本人は自分の分だけ | select string_agg(collection || '/' || id, ',' order by collection, id) from public.pull_records('{ws}')$s$,
+    $s$X | val=0 | 部外者は何も受け取れない | select count(*)::text from public.pull_records('{ws}')$s$,
+    $s$N | err=42501 | ログインなしでは受け取れない | select count(*) from public.pull_records('{ws}')$s$,
+    $s$O | val=12/12 | 同じ時刻の記録を5件ずつ受け取っても、抜けも重複もない | with recursive pages as (select 1 as n, (select jsonb_agg(to_jsonb(p) order by p.updated_at, p.collection, p.id) from public.pull_records('{ws}', null, '', '', 5) p) as page union all select pages.n + 1, (select jsonb_agg(to_jsonb(p) order by p.updated_at, p.collection, p.id) from public.pull_records('{ws}', (pages.page -> -1 ->> 'updated_at')::timestamptz, pages.page -> -1 ->> 'collection', pages.page -> -1 ->> 'id', 5) p) from pages where jsonb_array_length(pages.page) = 5) select count(*) || '/' || count(distinct (x ->> 'collection') || '/' || (x ->> 'id')) from pages, jsonb_array_elements(pages.page) x$s$,
+    $s$O | val=3 | 5件ずつなら3回で受け取り終わる | with recursive pages as (select 1 as n, (select jsonb_agg(to_jsonb(p) order by p.updated_at, p.collection, p.id) from public.pull_records('{ws}', null, '', '', 5) p) as page union all select pages.n + 1, (select jsonb_agg(to_jsonb(p) order by p.updated_at, p.collection, p.id) from public.pull_records('{ws}', (pages.page -> -1 ->> 'updated_at')::timestamptz, pages.page -> -1 ->> 'collection', pages.page -> -1 ->> 'id', 5) p) from pages where jsonb_array_length(pages.page) = 5) select count(*)::text from pages where page is not null$s$,
+    $s$O | val=9 | 続きは、(時刻, コレクション, ID) の次から返る | select count(*)::text from public.pull_records('{ws}', now(), 'members', 'mA')$s$,
+    $s$O | val=12 | 時刻だけの続き（前の形の端末）は、同じ時刻の分をもう一度返す | select count(*)::text from public.pull_records('{ws}', now())$s$,
+    $s$O | val=0 | 最後より後は、何も返らない | select count(*)::text from public.pull_records('{ws}', now() + interval '1 hour')$s$,
+
     -- ───── グループと、参加者・招待の表 ─────
     $s$A | val=1 | 本人は自分のグループを読める | select count(*)::text from public.workspaces$s$,
     $s$X | val=0 | 部外者はグループを読めない | select count(*)::text from public.workspaces$s$,
@@ -118,9 +130,11 @@ declare
     $s$C | val=0 | 参加者の一覧（指導者には出さない） | select count(*)::text from public.list_members('{ws}')$s$,
     $s$A | val=0 | 参加者の一覧（本人には出さない） | select count(*)::text from public.list_members('{ws}')$s$,
     $s$O | val=3 | 招待の一覧（owner） | select count(*)::text from public.list_invites('{ws}')$s$,
-    $s$C | val=0 | 招待の一覧（指導者には出さない） | select count(*)::text from public.list_invites('{ws}')$s$,
-    $s$C | msg=not allowed | 招待を作る（指導者） | select public.create_invite('{ws}', 'client', 'mO')$s$,
-    $s$A | msg=not allowed | 招待を作る（本人） | select public.create_invite('{ws}', 'coach')$s$,
+    $s$C | val=0 | 招待の一覧（指導者に見えるのは、自分が作ったものだけ） | select count(*)::text from public.list_invites('{ws}')$s$,
+    $s$A | val=0 | 招待の一覧（本人には出さない） | select count(*)::text from public.list_invites('{ws}')$s$,
+    $s$C | msg=not allowed | 指導者は、指導者を招けない | select public.create_invite('{ws}', 'coach')$s$,
+    $s$A | msg=not allowed | 本人は、指導者を招けない | select public.create_invite('{ws}', 'coach')$s$,
+    $s$A | msg=not allowed | 本人は、本人も招けない | select public.create_invite('{ws}', 'client', 'mO')$s$,
     $s$X | msg=not allowed | 招待を作る（部外者） | select public.create_invite('{ws}', 'coach')$s$,
     $s$C | msg=not allowed | 人を外す（指導者） | select public.remove_member('{ws}', '{uA}')$s$,
     $s$A | msg=not allowed | 人を外す（本人） | select public.remove_member('{ws}', '{uB}')$s$,
@@ -143,7 +157,8 @@ declare
     $s$C | msg=already a member | 参加済みの人は、別の招待で入り直せない | select public.join_workspace('{codeO2}')$s$,
     $s$P | val=unused | そのとき、コードは使われたことにならない | select case when used_at is null then 'unused' else 'used' end from public.invites where code_hash = private.invite_hash('{codeO2}')$s$,
     $s$O | save=invO2 | 使われていない招待を一覧から探す | select id::text from public.list_invites('{ws}') where member_id = 'mO' and used_at is null$s$,
-    $s$C | msg=not allowed | 招待の取り消し（指導者） | select public.revoke_invite('{invO2}')$s$,
+    $s$C | msg=not allowed | 指導者は、ほかの人が作った招待を取り消せない | select public.revoke_invite('{invO2}')$s$,
+    $s$A | msg=not allowed | 本人は、招待を取り消せない | select public.revoke_invite('{invO2}')$s$,
     $s$O | rows=1 | 招待の取り消し（owner） | select public.revoke_invite('{invO2}')$s$,
     $s$X | msg=not found | 取り消したコードは使えない | select public.join_workspace('{codeO2}')$s$,
     $s$O | save=codeE | 期限1日の招待を作る | select public.create_invite('{ws}', 'coach', null, 1) ->> 'code'$s$,
@@ -153,6 +168,45 @@ declare
     $s$O | val=7 | 期限は既定で7日 | select round(extract(epoch from ((public.create_invite('{ws}', 'coach') ->> 'expires_at')::timestamptz - now())) / 86400)::text$s$,
     $s$O | val=30 | 期限は最長30日 | select round(extract(epoch from ((public.create_invite('{ws}', 'coach', null, 999) ->> 'expires_at')::timestamptz - now())) / 86400)::text$s$,
     $s$X | val=0 | 参加に失敗した部外者は、何も読めないまま | select count(*)::text from public.records$s$,
+
+    -- ───── 指導者も、本人を招ける ─────
+    $s$C | rows=1 | 指導者が人（D）を足す | UPSERT members mD {"id":"mD","name":"Client D"}$s$,
+    $s$C | save=codeD | 指導者が本人Dの招待を作る | select public.create_invite('{ws}', 'client', 'mD') ->> 'code'$s$,
+    $s$C | val=1 | 指導者に見える招待は、自分が作ったものだけ | select count(*)::text from public.list_invites('{ws}')$s$,
+    $s$O | val=1 | owner には、指導者が作った招待も見える | select count(*)::text from public.list_invites('{ws}') where member_id = 'mD'$s$,
+    $s$C | val=mA,mB | 指導者に、アカウントが結びつき済みの人が分かる | select string_agg(x, ',' order by x) from public.linked_member_ids('{ws}') x$s$,
+    $s$O | val=mA,mB | owner にも分かる | select string_agg(x, ',' order by x) from public.linked_member_ids('{ws}') x$s$,
+    $s$A | val=0 | 本人には、結びつき済みの人を出さない | select count(*)::text from public.linked_member_ids('{ws}')$s$,
+    $s$X | val=0 | 部外者には、結びつき済みの人を出さない | select count(*)::text from public.linked_member_ids('{ws}')$s$,
+    $s$D | val=Test Gym 2/client/Client D/false | 招かれた本人Dが、招待の中身を確かめる | select (i ->> 'workspace_name') || '/' || (i ->> 'role') || '/' || (i ->> 'member_name') || '/' || (i ->> 'already_member') from public.invite_info('{codeD}') i$s$,
+    $s$D | val={ws} | 指導者の招待で、本人Dが参加する | select (public.join_workspace('{codeD}')).id::text$s$,
+    $s$D | val=client/mD | 本人Dの役割と、誰の記録か | select role || '/' || coalesce(member_id, 'NULL') from public.my_workspaces()$s$,
+    $s$C | val=mA,mB,mD | 結びつき済みの人に、Dが加わる | select string_agg(x, ',' order by x) from public.linked_member_ids('{ws}') x$s$,
+    $s$C | msg=member already linked | 指導者も、結びつき済みの人は招けない | select public.create_invite('{ws}', 'client', 'mD')$s$,
+    $s$C | save=codeO3 | 指導者が、別の人あての招待を作る | select public.create_invite('{ws}', 'client', 'mO') ->> 'code'$s$,
+    $s$C | save=invO3 | 指導者が、自分の招待を一覧から探す | select id::text from public.list_invites('{ws}') where member_id = 'mO' and used_at is null$s$,
+    $s$D | msg=not allowed | 本人は、指導者の招待を取り消せない | select public.revoke_invite('{invO3}')$s$,
+    $s$C | rows=1 | 指導者は、自分が作った招待を取り消せる | select public.revoke_invite('{invO3}')$s$,
+    $s$X | msg=not found | 指導者が取り消したコードは使えない | select public.join_workspace('{codeO3}')$s$,
+    $s$C | msg=not allowed | 指導者は、人を外せない | select public.remove_member('{ws}', '{uD}')$s$,
+
+    -- ───── 抜けるときに、記録を残すか消すかを本人が選ぶ ─────
+    $s$D | rows=1 | 本人Dが自分の記録を足す | UPSERT sessions sD1 {"id":"sD1","memberId":"mD","date":"2026-11-25","exercises":[]}$s$,
+    $s$D | rows=1 | 本人Dが自分の体組成を足す | UPSERT bodies bD1 {"id":"bD1","memberId":"mD","date":"2026-11-25","weight":65}$s$,
+    $s$C | rows=1 | 指導者が本人Dの記録を代わりに入れる | UPSERT sessions sD2 {"id":"sD2","memberId":"mD","date":"2026-11-26","exercises":[]}$s$,
+    $s$D | rows=1 | 本人Dが、そのうち1件を自分で消しておく | TOMB sessions sD1$s$,
+    $s$P | val=4 | ほかの人（A）の、消えていない記録の数 | select count(*)::text from public.records where workspace_id = '{ws}' and member_id = 'mA' and not deleted$s$,
+    $s$D | rows=1 | 本人Dが、記録を消して抜ける | select public.leave_workspace('{ws}', false)$s$,
+    $s$P | val=3/3 | Dの記録は3件とも、中身が空の「削除済み」になる | select count(*) || '/' || count(*) filter (where deleted and data is null) from public.records where workspace_id = '{ws}' and member_id = 'mD' and collection <> 'members'$s$,
+    $s$P | val={uD} | 消したのは本人、と残る（抜けるときに消えた2件） | select string_agg(distinct updated_by::text, ',') from public.records where workspace_id = '{ws}' and id in ('bD1', 'sD2')$s$,
+    $s$P | val=false/Client D | 人（members）の行は残る | select deleted || '/' || (data ->> 'name') from public.records where workspace_id = '{ws}' and collection = 'members' and id = 'mD'$s$,
+    $s$C | val=true | 削除が、指導者に届く | select bool_and(deleted)::text from public.pull_records('{ws}') where id in ('sD1', 'sD2', 'bD1')$s$,
+    $s$P | val=4 | ほかの人（A）の記録は、消えていない | select count(*)::text from public.records where workspace_id = '{ws}' and member_id = 'mA' and not deleted$s$,
+    $s$D | val= | 抜けた本人Dは読めない | IDS$s$,
+    $s$D | val=0 | 抜けた本人Dは、どのグループにも入っていない | select count(*)::text from public.my_workspaces()$s$,
+    $s$D | rows=1 | 入っていない人が「消して抜ける」を呼んでも、何も起きない | select public.leave_workspace('{ws}', false)$s$,
+    $s$P | val=4 | そのとき、ほかの人（A）の記録は消えていない | select count(*)::text from public.records where workspace_id = '{ws}' and member_id = 'mA' and not deleted$s$,
+    $s$C | val=mA,mB | 抜けた人は、結びつき済みから外れる | select string_agg(x, ',' order by x) from public.linked_member_ids('{ws}') x$s$,
 
     -- ───── 別のグループとの仕切り ─────
     $s$X | save=w2 | 部外者が自分のグループを作る | select (public.create_workspace('Other')).id::text$s$,
@@ -176,8 +230,9 @@ declare
     $s$A | err=42501 | 外された本人は書けない | UPSERT sessions sA7 {"id":"sA7","memberId":"mA"}$s$,
     $s$A | val=A own/owner | 外された本人に残るのは、自分のグループだけ | select string_agg(name || '/' || role, ',') from public.my_workspaces()$s$,
     $s$O | val=6 | 外しても、その人の記録は残る | select count(*)::text from public.records where workspace_id = '{ws}' and member_id = 'mA'$s$,
-    $s$B | rows=1 | 本人Bが自分から抜ける | select public.leave_workspace('{ws}')$s$,
+    $s$B | rows=1 | 本人Bが、何も指定せずに抜ける（＝記録を残す） | select public.leave_workspace('{ws}')$s$,
     $s$B | val= | 抜けた本人は読めない | IDS$s$,
+    $s$P | val=2 | 残して抜けると、その人の記録は消えない | select count(*)::text from public.records where workspace_id = '{ws}' and member_id = 'mB' and not deleted$s$,
     $s$O | val=2 | 残っている参加者は owner と指導者 | select count(*)::text from public.list_members('{ws}')$s$,
     $s$O | save=codeA2 | 外した人を、もう一度招く | select public.create_invite('{ws}', 'client', 'mA') ->> 'code'$s$,
     $s$A | val={ws} | 本人Aが入り直す | select (public.join_workspace('{codeA2}')).id::text$s$,
@@ -185,9 +240,16 @@ declare
     $s$O | rows=1 | owner が人（B）を消す | TOMB members mB$s$,
     $s$P | val=mB/true | 消した人の行も、その人のものとして残る | select member_id || '/' || deleted from public.records where workspace_id = '{ws}' and collection = 'members' and id = 'mB'$s$,
     $s$O | msg=member not found | 消した人あての招待は作れない | select public.create_invite('{ws}', 'client', 'mB')$s$,
-    $s$C | rows=1 | 指導者が自分から抜ける | select public.leave_workspace('{ws}')$s$,
+    $s$P | val=9 | 指導者が抜ける前の、消えていない記録の数（人3・profile 1・体組成2・セッション3） | select count(*)::text from public.records where workspace_id = '{ws}' and not deleted$s$,
+    $s$C | rows=1 | 指導者が「消す」を選んで抜ける | select public.leave_workspace('{ws}', false)$s$,
+    $s$P | val=9 | 指導者が「消す」を選んでも、記録は消えない | select count(*)::text from public.records where workspace_id = '{ws}' and not deleted$s$,
     $s$C | val= | 抜けた指導者は読めない | IDS$s$,
     $s$C | err=42501 | 抜けた指導者は書けない | UPSERT sessions sC1 {"id":"sC1","memberId":"mA"}$s$,
+
+    -- ───── 1000件を超える受け取り ─────
+    $s$P | rows=1005 | （記録を1005件入れる） | insert into public.records (workspace_id, collection, id, data) select '{ws}', 'conditions', 'g' || g, jsonb_build_object('id', 'g' || g, 'memberId', 'mO') from generate_series(1, 1005) g$s$,
+    $s$O | val=1000/true | 1回に返るのは1000件まで。続きを頼むと、残りがちょうど返る | with p1 as (select * from public.pull_records('{ws}', null, '', '', 5000)), last as (select updated_at, collection, id from p1 order by updated_at desc, collection desc, id desc limit 1) select (select count(*) from p1) || '/' || ((select count(*) from public.pull_records('{ws}', (select updated_at from last), (select collection from last), (select id from last))) = (select count(*) from public.records where workspace_id = '{ws}') - 1000)$s$,
+    $s$O | val=1 | 件数に0を頼んでも、1件は返る | select count(*)::text from public.pull_records('{ws}', null, '', '', 0)$s$,
 
     -- ───── ログインなし ─────
     $s$N | err=42501 | ログインなしで記録を読む | select count(*) from public.records$s$,
@@ -195,7 +257,9 @@ declare
     $s$N | err=42501 | ログインなしでグループを作る | select public.create_workspace('x')$s$,
     $s$N | err=42501 | ログインなしで参加する | select public.join_workspace('{codeA2}')$s$,
     $s$N | err=42501 | ログインなしで自分のグループを聞く | select count(*) from public.my_workspaces()$s$,
-    $s$N | err=42501 | ログインなしで参加者の一覧を聞く | select count(*) from public.list_members('{ws}')$s$
+    $s$N | err=42501 | ログインなしで参加者の一覧を聞く | select count(*) from public.list_members('{ws}')$s$,
+    $s$N | err=42501 | ログインなしで、結びつき済みの人を聞く | select count(*) from public.linked_member_ids('{ws}')$s$,
+    $s$N | err=42501 | ログインなしで「消して抜ける」を呼ぶ | select public.leave_workspace('{ws}', false)$s$
   ];
   upsert_tail constant text := ' on conflict (workspace_id, collection, id) do update set workspace_id = excluded.workspace_id, collection = excluded.collection, id = excluded.id, data = excluded.data, deleted = excluded.deleted';
   show_all boolean := coalesce(nullif(current_setting('physlog.test_verbose', true), ''), 'off') = 'on';
@@ -205,7 +269,7 @@ declare
   res text := ''; pass integer := 0; fail integer := 0;
 begin
   -- テスト用の利用者（最後の例外で巻き戻る）
-  vars := jsonb_build_object('uO', gen_random_uuid(), 'uC', gen_random_uuid(), 'uA', gen_random_uuid(), 'uB', gen_random_uuid(), 'uX', gen_random_uuid());
+  vars := jsonb_build_object('uO', gen_random_uuid(), 'uC', gen_random_uuid(), 'uA', gen_random_uuid(), 'uB', gen_random_uuid(), 'uD', gen_random_uuid(), 'uX', gen_random_uuid());
   for k in select jsonb_object_keys(vars) loop
     insert into auth.users (id, email) values ((vars ->> k)::uuid, 'physlog-roles-test-' || (vars ->> k) || '@example.invalid');
   end loop;
