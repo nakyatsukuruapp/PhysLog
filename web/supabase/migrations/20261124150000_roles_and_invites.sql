@@ -2,8 +2,15 @@
 --
 --   owner  … グループを作った人。全員の記録を読み書きでき、人（指導者・本人）を招く・外すができる。
 --            指導者を外すとき、その人の端末に残っているグループの記録を消すかどうかを選べる
---   coach  … 指導者。全員の記録を読み書きでき、本人を招ける（指導者を招く・人を外すのは owner だけ）
---   client … 本人。自分の記録だけ読み書きできる。抜けるときに、自分の記録をグループに残すか消すかを選べる
+--   coach  … 指導者。全員の記録を読み書きでき、本人を招ける（指導者を招く・人を外すのは owner だけ）。
+--            自分から抜けると、その人の端末からグループの記録が消える
+--   client … 本人。自分の記録だけ読み書きできる
+--
+-- 本人がグループを離れるとき（自分から抜ける・owner に外される）の決まり
+--   ・本人の記録は、指導者の側（グループ）には残さない。本人の端末には、本人の記録が残る
+--   ・本人が「実績として渡す」を選んだときだけ、グループに残す
+--   ・外されたときは、本人がその場にいない。記録をグループから見えなくして預かり（held_records）、
+--     本人が次にアプリを開いたときに、渡すかどうかを選ぶ
 --
 -- 「誰の記録か」は records.member_id で判定する（members コレクションの id と同じ値）。
 -- 旧・共通招待コード（workspaces.invite_code。何度でも使えて全権限が付く）は使わない。
@@ -92,6 +99,7 @@ grant execute on function private.my_member_id(uuid) to authenticated, service_r
 grant execute on function private.staff_workspace_ids() to authenticated, service_role;
 grant execute on function private.owner_workspace_ids() to authenticated, service_role;
 grant execute on function private.client_links() to authenticated, service_role;
+grant usage on schema private to service_role;
 
 -- ───────── 3. 記録を書くたびに「誰の記録か」を決める ─────────
 
@@ -113,6 +121,17 @@ begin
   else
     -- サーバーにない記録の削除。本人（client）が送ったものは、本人のものとして置く
     new.member_id := private.my_member_id(new.workspace_id);
+  end if;
+  -- 本人が渡さずに持ち帰った記録（削除済み）は、指導者の側からは中身を戻せない。
+  -- 電波のなかった端末が、古い写しを後から送ってきても、グループに戻らないようにするため。
+  -- 戻せるのは、その人として入り直した本人と、本人の返事を受けた関数（resolve_handover・join_workspace）だけ
+  if tg_op = 'UPDATE' and current_user in ('authenticated', 'anon') then
+    if old.deleted and new.data is not null and old.member_id is not null and new.collection not in ('members', 'profile') then
+      if private.records_withheld(new.workspace_id, old.member_id)
+         and not exists (select 1 from private.client_links() l where l.workspace_id = new.workspace_id and l.member_id = old.member_id) then
+        raise exception 'record withheld' using errcode = '42501';
+      end if;
+    end if;
   end if;
   return new;
 end $$;
@@ -144,20 +163,60 @@ create index invites_workspace_idx on public.invites (workspace_id, created_at d
 alter table public.invites enable row level security;
 -- 行の方針は置かない（表を直接は読ませない。owner も関数 list_invites を通す）
 
--- 外された人への知らせ。指導者を外すとき、外す側（グループに残る側）が、その人の端末に残っているグループの記録を
--- 消すかどうかを選ぶ（wipe_device）。外された人の端末は、次に同期しようとしたときにこれを読んで従う。
--- 入り直したら、知らせは消える
+-- グループを離れた人の控え（自分から抜けた・外された）。入り直したら消える。
+--   指導者 … その人の端末に残っているグループの記録を消すか（wipe_device）。
+--             owner が外すときは owner が選ぶ。自分から抜けたときは、いつも消す
+--   本人　 … 記録を実績として渡したか（handover）。
+--             pending＝外されて、まだ答えていない／given＝渡した／declined＝渡さなかった
+-- 離れた人の端末は、次に同期しようとしたときに、自分の控えを読んで従う（my_departure）
 create table public.departures (
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
+  role text not null check (role in ('coach', 'client')),
+  member_id text,
+  member_name text,
   wipe_device boolean not null default false,
+  handover text check (handover in ('pending', 'given', 'declined')),
   departed_at timestamptz not null default now(),
   removed_by uuid references auth.users(id) on delete set null,
-  primary key (workspace_id, user_id)
+  resolved_at timestamptz,
+  primary key (workspace_id, user_id),
+  constraint departures_client_has_handover check ((role = 'client') = (handover is not null)),
+  constraint departures_client_has_member check (role <> 'client' or member_id is not null)
 );
-comment on table public.departures is '外された人への知らせ。wipe_device が true なら、その人の端末は、グループの記録を端末から消す';
+comment on table public.departures is 'グループを離れた人の控え。指導者は端末の記録を消すか（wipe_device）、本人は記録を実績として渡したか（handover）';
+comment on column public.departures.member_name is '離れたときの、その人の名前（人の行が消されていても、誰の記録かを本人に見せるため）';
+comment on column public.departures.removed_by is '外した人。自分から抜けたときは空';
 alter table public.departures enable row level security;
--- 行の方針は置かない（関数 remove_member・my_departure だけがさわる）
+-- 行の方針は置かない（関数だけがさわる）
+
+-- 外された本人の記録の預かり。owner が本人を外すと、その人の記録をここへ写し、records の側は中身を空にする
+-- （指導者の側からは見えなくなる）。本人が「渡す」を選ぶか、同じ人として入り直すと records に戻し、「渡さない」を選ぶと消す。
+-- 読めるのは、外された本人だけ（関数 my_held_records を通す）
+create table public.held_records (
+  workspace_id uuid not null,
+  user_id uuid not null,
+  collection text not null,
+  id text not null,
+  data jsonb not null,
+  held_at timestamptz not null default now(),
+  primary key (workspace_id, user_id, collection, id),
+  foreign key (workspace_id, user_id) references public.departures (workspace_id, user_id) on delete cascade
+);
+comment on table public.held_records is '外された本人の記録の預かり。本人が、実績として渡すかどうかを答えるまで置く';
+alter table public.held_records enable row level security;
+-- 行の方針は置かない（関数だけがさわる）
+
+-- 本人が渡さずに持ち帰った記録の持ち主か：その人について、返事待ち・「渡さない」の控えがある。
+-- 記録のトリガー（touch_record）が、指導者の側からの書き戻しを断るのに使う
+create or replace function private.records_withheld(ws uuid, member text) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from public.departures d
+     where d.workspace_id = ws and d.role = 'client' and d.member_id = member and d.handover in ('pending', 'declined'))
+$$;
+revoke all on function private.records_withheld(uuid, text) from public;
+grant execute on function private.records_withheld(uuid, text) to authenticated, service_role;
 
 -- ───────── 5. 行ごとの権限（RLS） ─────────
 
@@ -209,12 +268,52 @@ alter policy "leave workspace" on public.workspace_members
   using (user_id = (select auth.uid()) and role <> 'owner');
 
 -- 表への権限は必要な分だけにする（ログインしていない人には何も渡さない）
-revoke all on public.workspaces, public.workspace_members, public.records, public.invites, public.departures from anon, authenticated;
+revoke all on public.workspaces, public.workspace_members, public.records, public.invites, public.departures, public.held_records from anon, authenticated;
 grant select on public.workspaces to authenticated;
 grant update (name) on public.workspaces to authenticated;
 grant select, insert, update on public.records to authenticated;
 
 -- ───────── 6. 操作の関数（RPC） ─────────
+
+-- 本人の記録を、グループから引き上げる（行は残し、中身を空にして「削除済み」にする）。
+-- 行そのものを消すと、ほかの端末に削除が届かず、古い写しが残って、つなぎ直したときに戻ってきてしまうため。
+-- keep_copy：あとで本人が「渡す」を選べるように、中身を held_records に預かっておく（owner が外したとき）。
+-- 人（members）の行は残る
+create or replace function private.withhold_records(ws uuid, holder uuid, member text, keep_copy boolean) returns void
+language plpgsql set search_path = '' as $$
+begin
+  delete from public.held_records h where h.workspace_id = ws and h.user_id = holder;
+  if keep_copy then
+    insert into public.held_records (workspace_id, user_id, collection, id, data)
+      select x.workspace_id, holder, x.collection, x.id, x.data
+        from public.records x
+       where x.workspace_id = ws and x.member_id = member and not x.deleted and x.data is not null
+         and x.collection in ('sessions', 'bodies', 'abilities', 'conditions', 'photos', 'activities');
+  end if;
+  update public.records x set data = null, deleted = true
+   where x.workspace_id = ws and x.member_id = member and not x.deleted
+     and x.collection in ('sessions', 'bodies', 'abilities', 'conditions', 'photos', 'activities');
+end $$;
+
+-- 預かっていた記録を、グループに戻す（本人が「実績として渡す」を選んだ・同じ人として入り直した）。
+-- そのあいだに入れ直された記録（削除済みでなくなったもの）は、上書きしない。
+-- 人（members）の行が消されていたら、離れたときの名前で戻す（記録だけが戻って、誰のものか見えない、とならないように）
+create or replace function private.restore_held(ws uuid, holder uuid, member text, member_name text) returns void
+language plpgsql set search_path = '' as $$
+begin
+  if member_name is not null and exists (select 1 from public.held_records h where h.workspace_id = ws and h.user_id = holder) then
+    update public.records x set data = jsonb_build_object('id', member, 'name', member_name), deleted = false
+     where x.workspace_id = ws and x.collection = 'members' and x.id = member and x.deleted;
+  end if;
+  update public.records x set data = h.data, deleted = false
+    from public.held_records h
+   where h.workspace_id = ws and h.user_id = holder
+     and x.workspace_id = h.workspace_id and x.collection = h.collection and x.id = h.id and x.deleted;
+  delete from public.held_records h where h.workspace_id = ws and h.user_id = holder;
+end $$;
+
+revoke all on function private.withhold_records(uuid, uuid, text, boolean) from public;
+revoke all on function private.restore_held(uuid, uuid, text, text) from public;
 
 -- 新しいグループを作り、自分を owner として入れる
 create or replace function public.create_workspace(ws_name text default 'PhysLog') returns public.workspaces
@@ -234,6 +333,7 @@ language plpgsql security definer set search_path = '' as $$
 declare
   inv public.invites;
   w public.workspaces;
+  dep public.departures;
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
   select * into inv from public.invites i where i.code_hash = private.invite_hash(code) for update;
@@ -246,9 +346,19 @@ begin
   if inv.role = 'client' and exists (select 1 from public.workspace_members m where m.workspace_id = inv.workspace_id and m.member_id = inv.member_id) then
     raise exception 'member already linked';
   end if;
+  -- 前に外されて、記録を渡すかどうかをまだ答えていないとき：別の人・別の役割で入るなら、先に答えてもらう
+  -- （預かっている記録の行き先が決まらないため）
+  select * into dep from public.departures d where d.workspace_id = inv.workspace_id and d.user_id = auth.uid() for update;
+  if dep.handover = 'pending' and not (inv.role = 'client' and inv.member_id = dep.member_id) then
+    raise exception 'handover pending';
+  end if;
   insert into public.workspace_members (workspace_id, user_id, role, member_id)
     values (inv.workspace_id, auth.uid(), inv.role, inv.member_id);
-  -- 前に外されたときの知らせ（端末の記録を消す、など）は、入り直したら無効にする
+  -- 同じ人として入り直すなら、預かっていた記録をグループに戻す（外される前の続きから）
+  if dep.handover = 'pending' then
+    perform private.restore_held(inv.workspace_id, auth.uid(), dep.member_id, dep.member_name);
+  end if;
+  -- 前に離れたときの控え（端末の記録を消す、渡さなかった、など）は、入り直したら無効にする
   delete from public.departures d where d.workspace_id = inv.workspace_id and d.user_id = auth.uid();
   update public.invites set used_by = auth.uid(), used_at = now() where id = inv.id;
   select * into w from public.workspaces where id = inv.workspace_id;
@@ -363,50 +473,132 @@ language sql stable security definer set search_path = '' as $$
    where m.workspace_id = ws and m.member_id is not null and private.my_role(ws) in ('owner', 'coach')
 $$;
 
--- coach・client を外す（owner だけ）。記録はグループに残る。
--- 指導者を外すときは、その人の端末に残っているグループの記録を消すかどうかを、外す側が選ぶ（wipe_device。何も指定しなければ残す）。
--- 本人（client）の端末にあるのは本人の記録だけなので、本人を外すときは消さない
+-- coach・client を外す（owner だけ）。
+-- 指導者を外すとき：その人の端末に残っているグループの記録を消すかどうかを、外す側が選ぶ（wipe_device。何も指定しなければ残す）。
+-- 本人を外すとき　：その人の記録は、グループから見えなくして預かる。本人が、実績として渡すかどうかを選ぶ（resolve_handover）。
+--                   本人の端末には、本人の記録が残る（預かりの記録を、最後に受け取れる。my_held_records）
 create or replace function public.remove_member(ws uuid, target uuid, wipe_device boolean default false) returns void
 language plpgsql security definer set search_path = '' as $$
-declare gone text;
+declare
+  gone_role text;
+  gone_member text;
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
   if private.my_role(ws) is distinct from 'owner' then raise exception 'not allowed'; end if;
   delete from public.workspace_members m where m.workspace_id = ws and m.user_id = target and m.role <> 'owner'
-    returning m.role into gone;
-  if gone is null then raise exception 'member not found'; end if;
-  insert into public.departures (workspace_id, user_id, wipe_device, removed_by)
-    values (ws, target, gone = 'coach' and coalesce(wipe_device, false), auth.uid())
+    returning m.role, m.member_id into gone_role, gone_member;
+  if gone_role is null then raise exception 'member not found'; end if;
+  if gone_role <> 'client' then gone_member := null; end if;
+  insert into public.departures (workspace_id, user_id, role, member_id, member_name, wipe_device, handover, removed_by)
+    values (ws, target, gone_role, gone_member,
+            (select x.data ->> 'name' from public.records x
+              where x.workspace_id = ws and x.collection = 'members' and x.id = gone_member and not x.deleted),
+            gone_role = 'coach' and coalesce(wipe_device, false),
+            case when gone_role = 'client' then 'pending' end,
+            auth.uid())
     on conflict (workspace_id, user_id) do update
-      set wipe_device = excluded.wipe_device, departed_at = now(), removed_by = excluded.removed_by;
+      set role = excluded.role, member_id = excluded.member_id, member_name = excluded.member_name,
+          wipe_device = excluded.wipe_device, handover = excluded.handover,
+          departed_at = now(), removed_by = excluded.removed_by, resolved_at = null;
+  if gone_role = 'client' then
+    perform private.withhold_records(ws, target, gone_member, true);
+  end if;
 end $$;
 
--- 外された人の端末が読む知らせ：端末にあるグループの記録を消すように、外した側が選んだか
-create or replace function public.my_departure(ws uuid) returns boolean
+-- 離れた人の端末が読む控え（自分のものだけ）：端末のグループの記録を消すか、記録を渡すかどうかの返事が残っているか。
+-- グループに入っているあいだ・控えがないときは null
+create or replace function public.my_departure(ws uuid) returns jsonb
 language sql stable security definer set search_path = '' as $$
-  select coalesce((select d.wipe_device from public.departures d where d.workspace_id = ws and d.user_id = auth.uid()), false)
+  select jsonb_build_object('role', d.role, 'wipe_device', d.wipe_device, 'handover', d.handover)
+    from public.departures d
+   where d.workspace_id = ws and d.user_id = auth.uid()
 $$;
 
 -- 自分から抜ける（owner は抜けられない）。
--- 本人（client）は、自分の記録をグループに残すか消すかを選べる（何も指定しなければ残す）。
--- 消すときは、行を残したまま中身を空にして「削除済み」にする。行そのものを消すと、ほかの端末に削除が届かず、
--- 古い写しが残って、つなぎ直したときに戻ってきてしまうため。
--- 人（members）の行は残る。指導者が抜けるときは、どちらを選んでも記録は変わらない
-create or replace function public.leave_workspace(ws uuid, keep_records boolean default true) returns void
+-- 本人：記録を実績として渡すかどうかを選ぶ（hand_over。何も指定しなければ渡さない）。
+--       渡すなら、記録はそのままグループに残る。渡さないなら、グループから引き上げる。どちらでも、本人の端末の記録は変わらない
+-- 指導者：記録は変わらない。その人の端末からは、グループの記録を消す（wipe_device の控えを置く）
+create or replace function public.leave_workspace(ws uuid, hand_over boolean default false) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
   r text := private.my_role(ws);
   mine text := private.my_member_id(ws);
+  give boolean := coalesce(hand_over, false);
 begin
   if auth.uid() is null then raise exception 'not signed in'; end if;
   if r = 'owner' then raise exception 'owner cannot leave'; end if;
-  if r = 'client' and mine is not null and not coalesce(keep_records, true) then
-    update public.records x set data = null, deleted = true
-     where x.workspace_id = ws and x.member_id = mine and not x.deleted
-       and x.collection in ('sessions', 'bodies', 'abilities', 'conditions', 'photos', 'activities');
-  end if;
+  if r is null then return; end if; -- 入っていない人が呼んでも、何も起きない
+  if r <> 'client' then mine := null; end if;
   delete from public.workspace_members m where m.workspace_id = ws and m.user_id = auth.uid();
+  insert into public.departures (workspace_id, user_id, role, member_id, member_name, wipe_device, handover, removed_by, resolved_at)
+    values (ws, auth.uid(), r, mine,
+            (select x.data ->> 'name' from public.records x
+              where x.workspace_id = ws and x.collection = 'members' and x.id = mine and not x.deleted),
+            r = 'coach',
+            case when r = 'client' then case when give then 'given' else 'declined' end end,
+            null,
+            case when r = 'client' then now() end)
+    on conflict (workspace_id, user_id) do update
+      set role = excluded.role, member_id = excluded.member_id, member_name = excluded.member_name,
+          wipe_device = excluded.wipe_device, handover = excluded.handover,
+          departed_at = now(), removed_by = null, resolved_at = excluded.resolved_at;
+  if r = 'client' and not give then
+    perform private.withhold_records(ws, auth.uid(), mine, false);
+  end if;
 end $$;
+
+-- 外されて、記録を実績として渡すかどうかを、まだ答えていないグループ（自分のものだけ）
+create or replace function public.my_handovers()
+returns table (workspace_id uuid, workspace_name text, member_id text, member_name text, departed_at timestamptz, records integer)
+language sql stable security definer set search_path = '' as $$
+  select d.workspace_id, w.name, d.member_id, d.member_name, d.departed_at,
+         (select count(*)::integer from public.held_records h where h.workspace_id = d.workspace_id and h.user_id = d.user_id)
+    from public.departures d join public.workspaces w on w.id = d.workspace_id
+   where d.user_id = auth.uid() and d.handover = 'pending'
+   order by d.departed_at
+$$;
+
+-- 外された本人が、預かりの記録を受け取る（最後の受け取り。自分のものだけ）。
+-- (コレクション, ID) の順に、続きから max_rows 件まで返す
+create or replace function public.my_held_records(ws uuid, after_collection text default '', after_id text default '', max_rows integer default 1000)
+returns table (collection text, id text, data jsonb)
+language sql stable security definer set search_path = '' as $$
+  select h.collection, h.id, h.data
+    from public.held_records h
+   where h.workspace_id = ws and h.user_id = auth.uid()
+     and (h.collection, h.id) > (coalesce(after_collection, ''), coalesce(after_id, ''))
+   order by h.collection, h.id
+   limit least(greatest(coalesce(max_rows, 1000), 1), 1000)
+$$;
+
+-- 外された本人の返事：これまでの記録を、実績としてグループに渡すか。
+-- 渡すなら、預かっていた記録をグループに戻す。渡さないなら、預かりを消す（グループからは消えたまま）
+create or replace function public.resolve_handover(ws uuid, give boolean) returns void
+language plpgsql security definer set search_path = '' as $$
+declare dep public.departures;
+begin
+  if auth.uid() is null then raise exception 'not signed in'; end if;
+  if give is null then raise exception 'choice required'; end if;
+  select * into dep from public.departures d where d.workspace_id = ws and d.user_id = auth.uid() for update;
+  if dep.handover is distinct from 'pending' then raise exception 'nothing to hand over'; end if;
+  update public.departures d set handover = case when give then 'given' else 'declined' end, resolved_at = now()
+   where d.workspace_id = ws and d.user_id = auth.uid();
+  if give then
+    perform private.restore_held(ws, auth.uid(), dep.member_id, dep.member_name);
+  end if;
+  delete from public.held_records h where h.workspace_id = ws and h.user_id = auth.uid();
+end $$;
+
+-- グループを離れた本人と、記録を実績として渡したかどうか（owner・coach が見る。メールアドレスは返さない）
+create or replace function public.list_departed(ws uuid)
+returns table (member_id text, member_name text, handover text, departed_at timestamptz, resolved_at timestamptz)
+language sql stable security definer set search_path = '' as $$
+  select d.member_id, d.member_name, d.handover, d.departed_at, d.resolved_at
+    from public.departures d
+   where d.workspace_id = ws and d.role = 'client' and private.my_role(ws) in ('owner', 'coach')
+   order by d.departed_at desc
+   limit 50
+$$;
 
 -- 自分が入っているグループと、そこでの役割（別の端末でログインしたときの再接続にも使う）
 create or replace function public.my_workspaces()
@@ -441,6 +633,10 @@ revoke all on function public.list_invites(uuid) from public, anon;
 revoke all on function public.list_members(uuid) from public, anon;
 revoke all on function public.remove_member(uuid, uuid, boolean) from public, anon;
 revoke all on function public.my_departure(uuid) from public, anon;
+revoke all on function public.my_handovers() from public, anon;
+revoke all on function public.my_held_records(uuid, text, text, integer) from public, anon;
+revoke all on function public.resolve_handover(uuid, boolean) from public, anon;
+revoke all on function public.list_departed(uuid) from public, anon;
 revoke all on function public.linked_member_ids(uuid) from public, anon;
 revoke all on function public.leave_workspace(uuid, boolean) from public, anon;
 revoke all on function public.my_workspaces() from public, anon;
@@ -454,6 +650,10 @@ grant execute on function public.list_invites(uuid) to authenticated;
 grant execute on function public.list_members(uuid) to authenticated;
 grant execute on function public.remove_member(uuid, uuid, boolean) to authenticated;
 grant execute on function public.my_departure(uuid) to authenticated;
+grant execute on function public.my_handovers() to authenticated;
+grant execute on function public.my_held_records(uuid, text, text, integer) to authenticated;
+grant execute on function public.resolve_handover(uuid, boolean) to authenticated;
+grant execute on function public.list_departed(uuid) to authenticated;
 grant execute on function public.linked_member_ids(uuid) to authenticated;
 grant execute on function public.leave_workspace(uuid, boolean) to authenticated;
 grant execute on function public.my_workspaces() to authenticated;
