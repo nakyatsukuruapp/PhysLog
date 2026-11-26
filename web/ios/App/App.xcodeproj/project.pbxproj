@@ -16,6 +16,12 @@
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
+		6B2D41695DB8A3F17484BE17 /* LegacyImportPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A2918205069C71F49F5F515 /* LegacyImportPlugin.swift */; };
+		4EC635E3913F7BD5A9381560 /* BodyMeasurement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27A539A0FB8BC779BB501364 /* BodyMeasurement.swift */; };
+		CDB8540037F37B1C352A6DDF /* ConditionRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DBACAFA4A8EA19B3D493B8B /* ConditionRecord.swift */; };
+		EAFDCF5C1A7D7F05C0C68727 /* PhysicalAbility.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34632169478F41C2FCB569A6 /* PhysicalAbility.swift */; };
+		0EB74D514C8CF751B40E9125 /* TrainingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D1BA4F07CF265048FDB2C8E /* TrainingModels.swift */; };
+		D9A19AF3C49E73EF1E921FD3 /* Gym.swift in Sources */ = {isa = PBXBuildFile; fileRef = 481D5FD518A1EFF2DA4FFA35 /* Gym.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +36,12 @@
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
+		3A2918205069C71F49F5F515 /* LegacyImportPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyImportPlugin.swift; sourceTree = "<group>"; };
+		27A539A0FB8BC779BB501364 /* BodyMeasurement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Legacy/BodyMeasurement.swift; sourceTree = "<group>"; };
+		4DBACAFA4A8EA19B3D493B8B /* ConditionRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Legacy/ConditionRecord.swift; sourceTree = "<group>"; };
+		34632169478F41C2FCB569A6 /* PhysicalAbility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Legacy/PhysicalAbility.swift; sourceTree = "<group>"; };
+		5D1BA4F07CF265048FDB2C8E /* TrainingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Legacy/TrainingModels.swift; sourceTree = "<group>"; };
+		481D5FD518A1EFF2DA4FFA35 /* Gym.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Legacy/Gym.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -67,6 +79,12 @@
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
+				3A2918205069C71F49F5F515 /* LegacyImportPlugin.swift */,
+				27A539A0FB8BC779BB501364 /* BodyMeasurement.swift */,
+				4DBACAFA4A8EA19B3D493B8B /* ConditionRecord.swift */,
+				34632169478F41C2FCB569A6 /* PhysicalAbility.swift */,
+				5D1BA4F07CF265048FDB2C8E /* TrainingModels.swift */,
+				481D5FD518A1EFF2DA4FFA35 /* Gym.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -160,6 +178,12 @@
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
+				6B2D41695DB8A3F17484BE17 /* LegacyImportPlugin.swift in Sources */,
+				4EC635E3913F7BD5A9381560 /* BodyMeasurement.swift in Sources */,
+				CDB8540037F37B1C352A6DDF /* ConditionRecord.swift in Sources */,
+				EAFDCF5C1A7D7F05C0C68727 /* PhysicalAbility.swift in Sources */,
+				0EB74D514C8CF751B40E9125 /* TrainingModels.swift in Sources */,
+				D9A19AF3C49E73EF1E921FD3 /* Gym.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -234,7 +258,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
@@ -285,7 +309,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -304,7 +328,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 3;
 				INFOPLIST_FILE = App/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -328,7 +352,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 3;
 				INFOPLIST_FILE = App/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

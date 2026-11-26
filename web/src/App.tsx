@@ -10,6 +10,7 @@ import { Settings } from './screens/Settings'
 import { ToastHost, toast } from './components/ui'
 import { autoSync } from './lib/health'
 import { startAds } from './lib/ads'
+import { canImportLegacy, importLegacy } from './lib/legacy'
 import { startAutoSync, useSyncState } from './lib/sync'
 import { TimerMini, TimerPanel } from './components/Timer'
 
@@ -53,7 +54,11 @@ export function App() {
   useEffect(() => { startAutoSync() }, [])
   useEffect(() => { startAds() }, [])
   useEffect(() => {
-    const run = () => autoSync(actions.getState()).then((r) => { if (r && (r.days || r.workouts || r.bodies)) toast('ヘルスケアを取り込みました') }).catch(() => {})
+    // 旧版（SwiftUI 版）の記録の引き継ぎを、ヘルスケアの取り込みより先に済ませる（同じ日の体重などを、1件にまとめるため）
+    const legacy = canImportLegacy()
+      ? importLegacy(actions).then((r) => { if (r?.total) toast(`旧版の記録を引き継ぎました（${r.total}件）`) }).catch(() => {})
+      : Promise.resolve()
+    const run = () => legacy.then(() => autoSync(actions.getState())).then((r) => { if (r && (r.days || r.workouts || r.bodies)) toast('ヘルスケアを取り込みました') }).catch(() => {})
     run()
     const onVis = () => { if (document.visibilityState === 'visible') run() }
     document.addEventListener('visibilitychange', onVis)
