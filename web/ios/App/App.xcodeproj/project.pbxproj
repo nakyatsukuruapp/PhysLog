@@ -22,6 +22,7 @@
 		EAFDCF5C1A7D7F05C0C68727 /* PhysicalAbility.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34632169478F41C2FCB569A6 /* PhysicalAbility.swift */; };
 		0EB74D514C8CF751B40E9125 /* TrainingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D1BA4F07CF265048FDB2C8E /* TrainingModels.swift */; };
 		D9A19AF3C49E73EF1E921FD3 /* Gym.swift in Sources */ = {isa = PBXBuildFile; fileRef = 481D5FD518A1EFF2DA4FFA35 /* Gym.swift */; };
+		A1B2C3D4E5F60718293A4B5D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +43,7 @@
 		34632169478F41C2FCB569A6 /* PhysicalAbility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Legacy/PhysicalAbility.swift; sourceTree = "<group>"; };
 		5D1BA4F07CF265048FDB2C8E /* TrainingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Legacy/TrainingModels.swift; sourceTree = "<group>"; };
 		481D5FD518A1EFF2DA4FFA35 /* Gym.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Legacy/Gym.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5C /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -89,6 +91,7 @@
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
 				504EC3131FED79650016851F /* Info.plist */,
+				A1B2C3D4E5F60718293A4B5C /* PrivacyInfo.xcprivacy */,
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
 			);
@@ -166,6 +169,7 @@
 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
+				A1B2C3D4E5F60718293A4B5D /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
