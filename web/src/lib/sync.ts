@@ -145,6 +145,29 @@ export async function signOut() {
   save(); emit()
 }
 
+/**
+ * アカウントを削除する（元に戻せない）。決まり：その人は「unknown user」と表示し、記録はグループに残る。
+ * 本人：名簿の名前が「unknown user」になる。管理者：いちばん古くから参加している指導者が管理者を引き継ぐ。
+ * この端末の記録は残る。ただし指導者は、グループから抜けたときと同じく、この端末からグループの記録を消す
+ */
+export async function deleteAccount() {
+  const ws = st.workspaceId
+  const role = st.role
+  // まだ送っていない記録を、先にグループへ届ける（記録は残す決まりのため）
+  if (ws) await syncNow().catch(() => {})
+  await rpc<null>('delete_my_account')
+  if (ws && role === 'coach') wipeGroupRecords(ws)
+  // アカウントはもうないので、サーバーには問い合わせず、この端末のログインだけを消す
+  await sb().auth.signOut({ scope: 'local' }).catch(() => {})
+  st = {
+    outbox: [],
+    notice: role === 'coach'
+      ? 'アカウントを削除しました。この端末にあったグループの記録を消しました（参加する前からこの端末にあった人の記録は残っています）。'
+      : 'アカウントを削除しました。この端末の記録は、そのまま残っています。',
+  }
+  save(); emit()
+}
+
 // ───────── グループ（ワークスペース） ─────────
 
 export interface MyWorkspace { id: string; name: string; role: Role; member_id: string | null }

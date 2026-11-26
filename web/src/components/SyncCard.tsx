@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import { ConfirmButton, toast } from './ui'
 import { useRawData } from '../store'
 import {
-  ROLE_LABEL, clearNotice, createInvite, createWorkspace, inviteInfo, joinWorkspace, leaveWorkspace, linkedMemberIds, listDeparted, listInvites, listPeople,
+  ROLE_LABEL, clearNotice, createInvite, createWorkspace, deleteAccount, inviteInfo, joinWorkspace, leaveWorkspace, linkedMemberIds, listDeparted, listInvites, listPeople,
   myHandovers, myWorkspaces, removePerson, resolveHandover, resumeWorkspace, revokeInvite, sb, session, signIn, signOut, signUp, syncNow, unlink, useSyncState,
   type Departed, type Handover, type HandoverState, type Invite, type InviteInfo, type InviteRow, type MyWorkspace, type Person,
 } from '../lib/sync'
@@ -53,6 +53,7 @@ export function SyncCard() {
       {!ses ? <Login busy={busy} run={run} />
         : !st.workspaceId ? <Start email={ses.user.email ?? ''} busy={busy} run={run} />
           : <Linked email={ses.user.email ?? ''} busy={busy} run={run} />}
+      {ses && <DeleteAccount busy={busy} run={run} />}
     </div>
   )
 }
@@ -107,6 +108,25 @@ function Handovers(props: { busy: boolean; run: Run; watch: string }) {
         </div>
       ))}
     </>
+  )
+}
+
+/** アカウントの削除（元に戻せない）。記録はグループに残り、その人は「unknown user」と表示される */
+function DeleteAccount(props: { busy: boolean; run: Run }) {
+  const st = useSyncState()
+  return (
+    <details style={{ marginTop: 16 }}>
+      <summary className="sub" style={{ cursor: 'pointer' }}>アカウントを削除する</summary>
+      <div className="sub" style={{ lineHeight: 1.7, margin: '8px 0' }}>
+        ログインに使うアカウント（メールアドレス）を削除します。元には戻せません。グループに送った記録は残り、あなたは「unknown user」と表示されます。
+        {st.role === 'owner' ? 'あなたは管理者なので、いちばん古くから参加している指導者が管理者を引き継ぎます（指導者がいなければ、管理者のいないグループとして残ります）。' : ''}
+        {st.role === 'coach' ? 'この端末からは、グループの記録が消えます（参加する前からこの端末にあった人の記録は残ります）。' : 'この端末の記録は残ります。'}
+      </div>
+      {props.busy ? <span className="sub">送信中…</span> : (
+        <ConfirmButton className="btn sm danger" label="アカウントを削除する" confirmLabel="もう一度押すと削除します（元に戻せません）"
+          onConfirm={() => { props.run(deleteAccount, 'アカウントを削除しました') }} />
+      )}
+    </details>
   )
 }
 

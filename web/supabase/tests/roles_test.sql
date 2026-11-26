@@ -389,6 +389,39 @@ declare
     $s$O | val=1000/true | 1回に返るのは1000件まで。続きを頼むと、残りがちょうど返る | with p1 as (select * from public.pull_records('{ws}', null, '', '', 5000)), last as (select updated_at, collection, id from p1 order by updated_at desc, collection desc, id desc limit 1) select (select count(*) from p1) || '/' || ((select count(*) from public.pull_records('{ws}', (select updated_at from last), (select collection from last), (select id from last))) = (select count(*) from public.records where workspace_id = '{ws}') - 1000)$s$,
     $s$O | val=1 | 件数に0を頼んでも、1件は返る | select count(*)::text from public.pull_records('{ws}', null, '', '', 0)$s$,
 
+    -- ───── アカウントの削除：その人は「unknown user」と表示し、記録は残す ─────
+    $s$X | rows=1 | （別のグループに、人を足す） | insert into public.records (workspace_id, collection, id, data) values ('{w2}', 'members', 'mB2', '{"id":"mB2","name":"Client B2"}')$s$,
+    $s$X | save=codeB2 | 本人Bを招く | select public.create_invite('{w2}', 'client', 'mB2') ->> 'code'$s$,
+    $s$B | val={w2} | 本人Bが参加する | select (public.join_workspace('{codeB2}')).id::text$s$,
+    $s$B | rows=1 | 本人Bが記録を足す | insert into public.records (workspace_id, collection, id, data) values ('{w2}', 'sessions', 'sB9', '{"id":"sB9","memberId":"mB2"}')$s$,
+    $s$X | save=codeE4 | 指導者Eを招く | select public.create_invite('{w2}', 'coach') ->> 'code'$s$,
+    $s$E | val={w2} | 指導者Eが参加する | select (public.join_workspace('{codeE4}')).id::text$s$,
+    $s$X | save=codeU | （使われない招待を1つ作っておく） | select public.create_invite('{w2}', 'coach') ->> 'code'$s$,
+    $s$B | rows=1 | 本人Bがアカウントを削除する | select public.delete_my_account()$s$,
+    $s$P | val=0 | アカウントが消える | select count(*)::text from auth.users where id = '{uB}'$s$,
+    $s$P | val=unknown user/false | 名簿の名前は「unknown user」になる | select (data ->> 'name') || '/' || deleted from public.records where workspace_id = '{w2}' and id = 'mB2'$s$,
+    $s$E | val=false/mB2 | その人の記録は残り、指導者が読める | select deleted || '/' || (data ->> 'memberId') from public.records where workspace_id = '{w2}' and id = 'sB9'$s$,
+    $s$P | val=NULL | 記録の「最後に書いた人」は空になる | select coalesce(updated_by::text, 'NULL') from public.records where workspace_id = '{w2}' and id = 'sB9'$s$,
+    $s$X | val=2 | 参加者の一覧から外れる | select count(*)::text from public.list_members('{w2}')$s$,
+    $s$X | rows=1 | owner（X）がアカウントを削除する | select public.delete_my_account()$s$,
+    $s$P | val=1/NULL | グループは残る（作った人は空になる） | select count(*) || '/' || coalesce(max(created_by::text), 'NULL') from public.workspaces where id = '{w2}'$s$,
+    $s$P | val=4 | 記録も残る | select count(*)::text from public.records where workspace_id = '{w2}' and not deleted$s$,
+    $s$E | val=owner | いちばん古くから参加している指導者が、管理者を引き継ぐ | select role from public.my_workspaces() where id = '{w2}'$s$,
+    $s$E | val=1 | 引き継いだ管理者は、参加者の一覧を見られる | select count(*)::text from public.list_members('{w2}')$s$,
+    $s$P | val=0 | 削除した人が作った招待は消える | select count(*)::text from public.invites where code_hash = private.invite_hash('{codeU}')$s$,
+    $s$E | rows=1 | 引き継いだ管理者は、記録を直せる | insert into public.records (workspace_id, collection, id, data) values ('{w2}', 'sessions', 'sB9', '{"id":"sB9","memberId":"mB2","memo":"after"}') on conflict (workspace_id, collection, id) do update set data = excluded.data$s$,
+    $s$D | save=w3 | 指導者のいないグループを作る | select (public.create_workspace('Solo')).id::text$s$,
+    $s$D | rows=1 | （人を足す） | insert into public.records (workspace_id, collection, id, data) values ('{w3}', 'members', 'mA3', '{"id":"mA3","name":"Client A3"}')$s$,
+    $s$D | save=codeA5 | 本人Aを招く | select public.create_invite('{w3}', 'client', 'mA3') ->> 'code'$s$,
+    $s$A | val={w3} | 本人Aが参加する | select (public.join_workspace('{codeA5}')).id::text$s$,
+    $s$A | rows=1 | 本人Aが記録を足す | insert into public.records (workspace_id, collection, id, data) values ('{w3}', 'sessions', 'sA30', '{"id":"sA30","memberId":"mA3"}')$s$,
+    $s$D | rows=1 | owner（D）がアカウントを削除する（指導者はいない） | select public.delete_my_account()$s$,
+    $s$P | val=1/0 | グループは、管理者のいないまま残る | select (select count(*) from public.workspaces where id = '{w3}') || '/' || (select count(*) from public.workspace_members where workspace_id = '{w3}' and role = 'owner')$s$,
+    $s$A | val=members/mA3,sessions/sA30 | 本人は、自分の記録を引き続き読める | select string_agg(collection || '/' || id, ',' order by collection, id) from public.records where workspace_id = '{w3}' and not deleted$s$,
+    $s$A | rows=1 | 本人は、自分の記録を引き続き書ける | insert into public.records (workspace_id, collection, id, data) values ('{w3}', 'sessions', 'sA31', '{"id":"sA31","memberId":"mA3"}')$s$,
+    $s$P | val=Client A3 | 削除したのは管理者なので、本人の名前は変わらない | select data ->> 'name' from public.records where workspace_id = '{w3}' and id = 'mA3'$s$,
+    $s$A | val=0 | 消えた人のアカウントで、他人の記録が読めるようにはならない | select count(*)::text from public.records where workspace_id = '{w2}'$s$,
+
     -- ───── ログインなし ─────
     $s$N | err=42501 | ログインなしで記録を読む | select count(*) from public.records$s$,
     $s$N | err=42501 | ログインなしでグループを読む | select count(*) from public.workspaces$s$,
@@ -403,7 +436,8 @@ declare
     $s$N | err=42501 | ログインなしで、預かりの記録を受け取る | select count(*) from public.my_held_records('{ws}')$s$,
     $s$N | err=42501 | ログインなしで、渡すかどうかを答える | select public.resolve_handover('{ws}', true)$s$,
     $s$N | err=42501 | ログインなしで、離れた本人の一覧を聞く | select count(*) from public.list_departed('{ws}')$s$,
-    $s$N | err=42501 | ログインなしで人を外す | select public.remove_member('{ws}', '{uO}', true)$s$
+    $s$N | err=42501 | ログインなしで人を外す | select public.remove_member('{ws}', '{uO}', true)$s$,
+    $s$N | err=42501 | ログインなしでアカウントを削除する | select public.delete_my_account()$s$
   ];
   upsert_tail constant text := ' on conflict (workspace_id, collection, id) do update set workspace_id = excluded.workspace_id, collection = excluded.collection, id = excluded.id, data = excluded.data, deleted = excluded.deleted';
   show_all boolean := coalesce(nullif(current_setting('physlog.test_verbose', true), ''), 'off') = 'on';

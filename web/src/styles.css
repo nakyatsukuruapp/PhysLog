@@ -51,7 +51,7 @@ textarea { resize: vertical; min-height: 60px; }
   border-radius: 10px; font-weight: 600; color: var(--sub); margin-bottom: 2px;
 }
 .side-nav button.on { background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary); }
-.main { flex: 1; min-width: 0; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+.main { flex: 1; min-width: 0; padding-bottom: calc(76px + var(--ad-h, 0px) + env(safe-area-inset-bottom)); }
 .wrap { max-width: 760px; margin: 0 auto; padding: 16px; }
 .topbar {
   position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent);
@@ -76,7 +76,7 @@ textarea { resize: vertical; min-height: 60px; }
 @media (min-width: 900px) {
   .side { display: block; }
   .tabbar { display: none; }
-  .main { padding-bottom: 24px; }
+  .main { padding-bottom: calc(24px + var(--ad-h, 0px)); }
 }
 
 /* ── 部品 ───────────────── */
@@ -134,7 +134,7 @@ textarea { resize: vertical; min-height: 60px; }
 .date-nav .d { font-weight: 800; font-size: 15px; min-width: 120px; text-align: center; position: relative; }
 .date-nav .d input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .toast {
-  position: fixed; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  position: fixed; left: 50%; bottom: calc(90px + var(--ad-h, 0px) + env(safe-area-inset-bottom)); transform: translateX(-50%);
   background: #111; color: #fff; padding: 10px 16px; border-radius: 999px; font-size: 14px; font-weight: 600;
   z-index: 100; animation: pop .2s ease-out;
 }

@@ -9,6 +9,7 @@ import { Photos } from './screens/Photos'
 import { Settings } from './screens/Settings'
 import { ToastHost, toast } from './components/ui'
 import { autoSync } from './lib/health'
+import { startAds } from './lib/ads'
 import { startAutoSync, useSyncState } from './lib/sync'
 import { TimerMini, TimerPanel } from './components/Timer'
 
@@ -50,6 +51,7 @@ export function App() {
 
   // アプリ版：開いたとき・戻ってきたときにヘルスケアを取り込む（1時間に1回まで）
   useEffect(() => { startAutoSync() }, [])
+  useEffect(() => { startAds() }, [])
   useEffect(() => {
     const run = () => autoSync(actions.getState()).then((r) => { if (r && (r.days || r.workouts || r.bodies)) toast('ヘルスケアを取り込みました') }).catch(() => {})
     run()
