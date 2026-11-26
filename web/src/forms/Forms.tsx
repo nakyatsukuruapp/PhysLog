@@ -7,6 +7,7 @@ import { DateField, Scale, Sheet, Stepper, UnitInput, toast } from '../component
 import {
   ACTIVITY_KINDS, ABILITY_PRESETS, CONDITION_COLORS, EXERCISES, SPORTS, abilityIcon, findAbility, isLowerBetter, resolveAlias,
 } from '../lib/presets'
+import { defaultGym, nearby, useGyms, weightCandidates } from '../lib/gyms'
 import { activitySummary, hoursAcrossMidnight, durationLabel, exerciseVolume, fullDate, kg, labelDate, minutesBetween, nowHM, num, parseNum, sessionVolume, setsSummary } from '../lib/format'
 
 const str = (v?: number) => (v == null ? '' : String(v))
@@ -203,6 +204,10 @@ export function TrainingForm(props: { date: string; existing?: TrainingSession; 
   const [start, setStart] = useState(e?.start ?? '')
   const [end, setEnd] = useState(e?.end ?? '')
   const [memo, setMemo] = useState(e?.memo ?? '')
+  // 場所（ジム）：登録したジムから選ぶと、そのジムで作れる重量を候補に出す
+  const gyms = useGyms()
+  const [place, setPlace] = useState(e?.place ?? (e ? '' : defaultGym()?.name ?? ''))
+  const gym = gyms.find((g) => g.name === place)
   const [exs, setExs] = useState<ExerciseLog[]>(() => e?.exercises.map((x) => ({ ...x, sets: x.sets.map((s) => ({ ...s })) })) ?? [])
   const [picking, setPicking] = useState(exs.length === 0 && past.length === 0)
 
@@ -232,7 +237,7 @@ export function TrainingForm(props: { date: string; existing?: TrainingSession; 
 
   const save = () => {
     const cleaned = exs.map((x) => ({ ...x, sets: x.sets.filter((s) => s.weight != null || s.reps != null) }))
-    actions.saveSession({ id: e?.id ?? uid(), date: date, sport, memo, exercises: cleaned, start: start || undefined, end: end || undefined })
+    actions.saveSession({ id: e?.id ?? uid(), date: date, sport, memo, exercises: cleaned, start: start || undefined, end: end || undefined, place: place || undefined })
     toast('トレーニングを保存しました')
     props.onClose()
   }
@@ -274,6 +279,16 @@ export function TrainingForm(props: { date: string; existing?: TrainingSession; 
           {start && !end && <button className="chip on" onClick={() => setEnd(nowHM())}>■ 今終わった</button>}
         </div>
       </div>
+      {(gyms.length > 0 || place) && (
+        <div className="chips scroll" style={{ marginBottom: 8 }}>
+          <span className="sub" style={{ fontWeight: 700, alignSelf: 'center', flexShrink: 0 }}>場所</span>
+          <button className={'chip' + (!place ? ' on' : '')} onClick={() => setPlace('')}>なし</button>
+          {place && !gym && <button className="chip on">{place}</button>}
+          {gyms.map((g) => (
+            <button key={g.id} className={'chip' + (place === g.name ? ' on' : '')} onClick={() => setPlace(g.name)}>{g.name}</button>
+          ))}
+        </div>
+      )}
       <div className="chips scroll" style={{ marginBottom: 12 }}>
         {SPORTS.map((s) => (
           <button key={s} className={'chip' + (sport === s ? ' on' : '')} onClick={() => setSport(s)}>{s}</button>
@@ -298,6 +313,7 @@ export function TrainingForm(props: { date: string; existing?: TrainingSession; 
       {exs.map((x) => {
         const last = lastOf(x.name)
         const timed = x.sets.some((s) => s.sec != null) && !x.sets.some((s) => s.weight != null)
+        const cands = timed ? [] : weightCandidates(x.name, gym)
         return (
           <div className="ex" key={x.id}>
             <div className="ex-h">
@@ -321,6 +337,14 @@ export function TrainingForm(props: { date: string; existing?: TrainingSession; 
                   : <Stepper value={s.weight} step={2.5} unit="kg" onChange={(v) => update(x.id, (y) => ({ ...y, sets: y.sets.map((z, j) => (j === i ? { ...z, weight: v } : z)) }))} />}
                 <Stepper value={s.reps} step={1} unit="回" onChange={(v) => update(x.id, (y) => ({ ...y, sets: y.sets.map((z, j) => (j === i ? { ...z, reps: v == null ? undefined : Math.round(v) } : z)) }))} />
                 <button className="muted" onClick={() => update(x.id, (y) => ({ ...y, sets: y.sets.filter((_, j) => j !== i) }))} aria-label="セットを削除">✕</button>
+                {cands.length > 0 && (
+                  <div className="chips scroll" style={{ gridColumn: '1 / -1', margin: '2px 0 6px' }} aria-label={`${gym?.name}で作れる重量`}>
+                    {nearby(cands, s.weight).map((w) => (
+                      <button key={w} className={'chip' + (s.weight === w ? ' on' : '')} style={{ padding: '4px 10px', fontSize: 12 }}
+                        onClick={() => update(x.id, (y) => ({ ...y, sets: y.sets.map((z, j) => (j === i ? { ...z, weight: w } : z)) }))}>{w}kg</button>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
             <button

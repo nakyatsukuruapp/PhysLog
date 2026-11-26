@@ -1,6 +1,8 @@
 import Foundation
 import Capacitor
 import SwiftData
+import Vision
+import UIKit
 
 /// 旧版（SwiftUI 版 PhysLog）の記録を読み出して、アプリ（Web 側）に渡す。
 /// 旧版は記録を端末の中（SwiftData の default.store）に持っている。同じアプリIDで更新すると、そのファイルは端末に残るので、
@@ -12,6 +14,7 @@ public class LegacyImportPlugin: CAPPlugin, CAPBridgedPlugin {
     public let jsName = "LegacyImport"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "read", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "recognizeText", returnType: CAPPluginReturnPromise),
     ]
 
     @objc func read(_ call: CAPPluginCall) {
@@ -71,7 +74,14 @@ public class LegacyImportPlugin: CAPPlugin, CAPBridgedPlugin {
                     return ["date": ms(s.date), "sport": s.sport, "memo": s.memo, "gym": s.gymName, "exercises": exercises]
                 }
                 let gyms = try ctx.fetch(FetchDescriptor<Gym>()).map { g -> [String: Any] in
-                    ["name": g.name, "memo": g.memo, "isDefault": g.isDefault]
+                    var o: [String: Any] = [
+                        "name": g.name, "memo": g.memo, "isDefault": g.isDefault,
+                        "barWeights": g.barWeights, "plateWeights": g.plateWeights,
+                        "dumbbellMin": g.dumbbellMin, "dumbbellMax": g.dumbbellMax, "dumbbellStep": g.dumbbellStep,
+                        "machineUnit": g.machineUnitRaw,
+                    ]
+                    if let v = g.machineStepWeight { o["machineStepWeight"] = v }
+                    return o
                 }
                 let defaults = UserDefaults.standard
                 call.resolve([
@@ -86,6 +96,52 @@ public class LegacyImportPlugin: CAPPlugin, CAPBridgedPlugin {
             } catch {
                 call.reject("旧版の記録を開けませんでした: \(error.localizedDescription)")
             }
+        }
+    }
+}
+
+extension LegacyImportPlugin {
+    /// 写真（結果用紙・画面のスクリーンショット）の文字を読み取る。端末の中だけで行い、画像も文字も外へ送らない（旧版の OCRImporter と同じ設定）。
+    /// 受け取り：image（base64。data: で始まる形も可）。返す：lines（読み取った行）
+    @objc func recognizeText(_ call: CAPPluginCall) {
+        guard var b64 = call.getString("image") else { call.reject("画像がありません"); return }
+        if let comma = b64.firstIndex(of: ","), b64.hasPrefix("data:") { b64 = String(b64[b64.index(after: comma)...]) }
+        guard let data = Data(base64Encoded: b64, options: .ignoreUnknownCharacters),
+              let image = UIImage(data: data), let cg = image.cgImage else {
+            call.reject("画像を読み込めませんでした")
+            return
+        }
+        let request = VNRecognizeTextRequest { request, error in
+            if let error = error { call.reject("文字を読み取れませんでした: \(error.localizedDescription)"); return }
+            let lines = (request.results as? [VNRecognizedTextObservation] ?? []).compactMap { $0.topCandidates(1).first?.string }
+            call.resolve(["lines": lines])
+        }
+        request.recognitionLevel = .accurate
+        request.recognitionLanguages = ["ja-JP", "en-US"]
+        request.usesLanguageCorrection = false // 数値が補正で崩れるのを防ぐ
+        let orientation = CGImagePropertyOrientation(image.imageOrientation)
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try VNImageRequestHandler(cgImage: cg, orientation: orientation, options: [:]).perform([request])
+            } catch {
+                call.reject("文字を読み取れませんでした: \(error.localizedDescription)")
+            }
+        }
+    }
+}
+
+private extension CGImagePropertyOrientation {
+    init(_ o: UIImage.Orientation) {
+        switch o {
+        case .up: self = .up
+        case .down: self = .down
+        case .left: self = .left
+        case .right: self = .right
+        case .upMirrored: self = .upMirrored
+        case .downMirrored: self = .downMirrored
+        case .leftMirrored: self = .leftMirrored
+        case .rightMirrored: self = .rightMirrored
+        @unknown default: self = .up
         }
     }
 }

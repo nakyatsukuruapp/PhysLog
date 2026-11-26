@@ -1,8 +1,10 @@
 // 旧版（SwiftUI 版 PhysLog）の記録を引き継ぐ。iOS アプリ版の初回起動時に1回だけ動く。
 // 読み出しは iOS 側（ios/App/App/LegacyImportPlugin.swift）、新しい形への変換はここ。
-// 引き継ぐもの：身体測定・コンディション・能力測定・トレーニング（種目とセット、ジム名→場所）・プロフィール（名前・競技）。
-// 引き継がないもの：ジムの設定（バー・プレートの重さ）と、メニュー作成の設定（新しい版に同じ機能がないため）。
+// 引き継ぐもの：身体測定・コンディション・能力測定・トレーニング（種目とセット、ジム名→場所）・プロフィール（名前・競技）・
+// ジムの器具設定（バー・プレート・ダンベルの重さ。端末ごとの設定に入れる）。
+// 引き継がないもの：メニュー作成の設定（目的・経験・日数。新しい版では、その場で選ぶ形のため）。
 import { Capacitor, registerPlugin } from '@capacitor/core'
+import { addGyms, type Gym, type MachineUnit } from './gyms'
 import type { AppData, BodyMeasurement, ConditionRecord, ExerciseLog, PhysicalAbility, SetEntry, TrainingSession } from '../types'
 
 export interface LegacySet { weight?: number; reps?: number; order: number }
@@ -14,7 +16,11 @@ export interface LegacyData {
   conditions?: { date: number; sleep?: number; fatigue?: number; condition?: number; memo: string; fromHealth: boolean }[]
   abilities?: { date: number; type: string; value: number; unit: string; memo: string }[]
   sessions?: { date: number; sport: string; memo: string; gym: string; exercises: LegacyExercise[] }[]
-  gyms?: { name: string; memo: string; isDefault: boolean }[]
+  gyms?: {
+    name: string; memo: string; isDefault: boolean
+    barWeights?: number[]; plateWeights?: number[]; dumbbellMin?: number; dumbbellMax?: number; dumbbellStep?: number
+    machineUnit?: string; machineStepWeight?: number
+  }[]
 }
 
 export interface Converted {
@@ -23,6 +29,7 @@ export interface Converted {
   abilities: PhysicalAbility[]
   sessions: TrainingSession[]
   profile: { name: string; sport: string }
+  gyms: Gym[]
 }
 
 /** 端末の時刻での日付（YYYY-MM-DD） */
@@ -74,7 +81,14 @@ export function convertLegacy(raw: LegacyData, memberId: string): Converted {
       .map((e, i) => ({ id: `${id}-e${i + 1}`, name: e.name, sets: toSets(e) }))
     return clean<TrainingSession>({ id, memberId, date: dayOf(s.date), sport: s.sport ?? '', memo: s.memo ?? '', place: s.gym || undefined, exercises })
   })
-  return { bodies, conditions, abilities, sessions, profile: { name: raw.profile?.name ?? '', sport: raw.profile?.sport ?? '' } }
+  const unit = (u?: string): MachineUnit => (u === 'lb' ? 'lb' : u === '段階' ? 'stack' : 'kg')
+  const gyms: Gym[] = (raw.gyms ?? []).filter((g) => g.name).map((g, i) => clean<Gym>({
+    id: `lg-gym-${i + 1}`, name: g.name, memo: g.memo ?? '', isDefault: !!g.isDefault,
+    barWeights: g.barWeights ?? [20], plateWeights: g.plateWeights ?? [1.25, 2.5, 5, 10, 15, 20],
+    dumbbellMin: g.dumbbellMin ?? 1, dumbbellMax: g.dumbbellMax ?? 40, dumbbellStep: g.dumbbellStep ?? 2,
+    machineUnit: unit(g.machineUnit), machineStepWeight: g.machineStepWeight,
+  }))
+  return { bodies, conditions, abilities, sessions, gyms, profile: { name: raw.profile?.name ?? '', sport: raw.profile?.sport ?? '' } }
 }
 
 const FLAG = 'physlog.legacyImport'
@@ -105,6 +119,7 @@ export async function importLegacy(store: Store, read: () => Promise<LegacyData>
   store.upsertMany('conditions', c.conditions as never[])
   store.upsertMany('abilities', c.abilities as never[])
   store.upsertMany('sessions', c.sessions as never[])
+  const gymCount = addGyms(c.gyms)
   // 名前と競技：新しい版でまだ決めていなければ、旧版のものを使う
   if (c.profile.name || c.profile.sport) {
     const p = store.getState().profile
@@ -113,7 +128,7 @@ export async function importLegacy(store: Store, read: () => Promise<LegacyData>
   const me = store.getState().members.find((m) => m.id === memberId)
   if (c.profile.name && me && me.name === '自分') store.renameMember(memberId, c.profile.name)
   done(new Date().toISOString())
-  return { total: c.bodies.length + c.conditions.length + c.abilities.length + c.sessions.length }
+  return { total: c.bodies.length + c.conditions.length + c.abilities.length + c.sessions.length + gymCount }
 }
 
 /** iOS アプリ版でだけ動かす */

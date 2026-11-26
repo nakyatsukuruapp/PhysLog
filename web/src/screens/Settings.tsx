@@ -6,6 +6,9 @@ import { makeSample } from '../lib/sample'
 import { SPORTS, activityMeta } from '../lib/presets'
 import { HealthCard } from '../components/HealthCard'
 import { SyncCard } from '../components/SyncCard'
+import { GymCard } from '../components/GymCard'
+import { BodyImportCard } from '../components/BodyImportCard'
+import { GYM_PRESETS, addGyms } from '../lib/gyms'
 import { useSyncState } from '../lib/sync'
 import { sessionVolume, todayKey } from '../lib/format'
 
@@ -144,6 +147,9 @@ export function Settings(props: { onOpenMenu: () => void }) {
         <div className="sub">「睡眠 23:40-6:50」「ウォーキング 30分 2.5km」「バイク 40分 15km」の形も読めます。同じ日のものを2回貼っても重複しません。</div>
       </div>
 
+      <GymCard />
+      <BodyImportCard />
+
       <div className="card">
         <div className="card-h"><h2>プロフィール</h2></div>
         <label className="label">普段の競技（トレーニング記録の初期値）</label>
@@ -169,6 +175,8 @@ export function Settings(props: { onOpenMenu: () => void }) {
             const sm = makeSample()
             const tag = <T extends object>(l: T[]) => l.map((x) => ({ ...x, memberId: active.id }))
             actions.merge({ bodies: tag(sm.bodies), abilities: tag(sm.abilities), sessions: tag(sm.sessions), conditions: tag(sm.conditions), members: [] })
+            // 旧版と同じく、器具構成の違う2つのジムも登録する（記録画面の重量の候補を確かめられるように）
+            addGyms([{ ...GYM_PRESETS[0].make('デモジム（一般的）'), isDefault: true }, GYM_PRESETS[1].make('デモジム（プレートが粗い）')])
             toast('デモデータを追加しました')
           }}>デモデータを追加</button>
         </div>

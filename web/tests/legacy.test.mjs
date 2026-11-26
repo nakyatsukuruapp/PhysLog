@@ -6,11 +6,11 @@ import vm from 'node:vm'
 process.env.TZ = 'Asia/Tokyo'
 const out = await build({
   entryPoints: [new URL('../src/lib/legacy.ts', import.meta.url).pathname], bundle: true, write: false, format: 'cjs', platform: 'neutral',
-  external: ['@capacitor/core'],
+  external: ['@capacitor/core', 'react'],
 })
 const store = new Map()
 const ctx = { module: { exports: {} }, localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)) },
-  require: (m) => { if (m === '@capacitor/core') return { Capacitor: { isNativePlatform: () => true, getPlatform: () => 'ios' }, registerPlugin: () => ({}) }; throw new Error(m) } }
+  require: (m) => { if (m === 'react') return { useSyncExternalStore: () => null }; if (m === '@capacitor/core') return { Capacitor: { isNativePlatform: () => true, getPlatform: () => 'ios' }, registerPlugin: () => ({}) }; throw new Error(m) } }
 ctx.exports = ctx.module.exports
 vm.runInNewContext(out.outputFiles[0].text, ctx)
 const { convertLegacy, toSets, importLegacy } = ctx.module.exports
@@ -38,7 +38,7 @@ const raw = {
       { name: 'カーフレイズ', order: 3, reps: 15, entries: [] },
     ],
   }],
-  gyms: [{ name: 'エニタイム', memo: '', isDefault: true }],
+  gyms: [{ name: 'エニタイム', memo: '', isDefault: true, barWeights: [20, 15], plateWeights: [2.5, 5, 10], dumbbellMin: 2, dumbbellMax: 30, dumbbellStep: 2, machineUnit: 'lb' }, { name: '学校', memo: '', isDefault: false }],
 }
 
 await check('セットの持ち方：1セットずつの記録・同じ重さの繰り返し・何もない・回数だけ', () => {
@@ -58,6 +58,7 @@ await check('記録を新しい形にする（端末の時刻の日付・種目�
   assert.deepEqual(s.exercises.map((e) => e.name), ['ベンチプレス', 'スクワット', 'プランク', 'カーフレイズ'])
   assert.equal(new Set(s.exercises.map((e) => e.id)).size, 4)
   assert.deepEqual(c.profile, { name: 'Taro', sport: 'バスケットボール' })
+  assert.deepEqual(c.gyms.map((g) => [g.name, g.isDefault, g.barWeights, g.plateWeights, g.dumbbellStep, g.machineUnit]), [['エニタイム', true, [20, 15], [2.5, 5, 10], 2, 'lb'], ['学校', false, [20], [1.25, 2.5, 5, 10, 15, 20], 2, 'kg']])
 })
 
 await check('id は何度変換しても同じ。同じ時刻の記録が2件あっても、ぶつからない', () => {
@@ -83,7 +84,8 @@ await check('初回だけ取り込む。名前（自分→旧版の名前）と�
   store.clear()
   const s = makeStore()
   const r = await importLegacy(s, async () => raw)
-  assert.equal(r.total, 2 + 1 + 1 + 1)
+  assert.equal(r.total, 2 + 1 + 1 + 1 + 2, 'ジム2つも数える')
+  assert.deepEqual(JSON.parse(store.get('physlog.gyms')).map((g) => g.name), ['エニタイム', '学校'])
   assert.equal(s.state.sessions[0].exercises.length, 4)
   assert.deepEqual(plain(s.state.profile), { name: 'Taro', sport: 'バスケットボール' })
   assert.equal(s.state.members[0].name, 'Taro')
