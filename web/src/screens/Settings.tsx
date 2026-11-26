@@ -137,7 +137,7 @@ export function Settings(props: { onOpenMenu: () => void }) {
           3. 「ヘルスケアのサンプルを検索」：歩数（今日）→ 合計<br />
           4. 「テキスト」に下の形で並べて「クリップボードにコピー」
         </div>
-        <pre style={{ background: 'var(--fill2)', padding: 10, borderRadius: 10, fontSize: 13, whiteSpace: 'pre-wrap' }}>{`Katsura
+        <pre style={{ background: 'var(--fill2)', padding: 10, borderRadius: 10, fontSize: 13, whiteSpace: 'pre-wrap' }}>{`Hanako
 睡眠 412分
 歩数 8234
 歩行距離 5.6km`}</pre>

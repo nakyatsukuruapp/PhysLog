@@ -1,7 +1,7 @@
 // 1行メモ形式のトレーニング記録を読み取る。
 //
 //   トレーニング記録 2026/11/12
-//   Ryota,Katsura
+//   Taro,Hanako
 //   BSQ 20kg 5rep 1set,60kg 5rep 3set
 //   2db
 //   ランジ→2up 10kg 5 3

@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>NSHealthShareUsageDescription</key>
-	<string>睡眠・歩数・歩行距離・体重・体脂肪率・ワークアウトを読み取り、トレーニングとコンディションの記録に使います。データは端末の中だけに保存します。</string>
+	<string>睡眠・歩数・歩行距離・体重・体脂肪率・ワークアウトを読み取り、トレーニングとコンディションの記録に使います。読み取った内容は端末に保存し、同期を使っているときだけ、ほかの記録と同じようにあなたのグループに送られます。</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>PhysLog はヘルスケアへの書き込みを行いません。</string>
 

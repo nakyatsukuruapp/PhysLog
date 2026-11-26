@@ -14,7 +14,7 @@ const saveDraft = (v: string) => { try { localStorage.setItem(DRAFT, v) } catch 
 
 const EXAMPLE = `例）
 11/12
-Ryota,Katsura
+Taro,Hanako
 BSQ 20kg 5rep 1set, 60kg 5rep 3set
 OHSQ 20kg 5 3
 2db
@@ -128,7 +128,7 @@ export function TextImport(props: { onClose: () => void }) {
           style={{ minHeight: 260, fontSize: 16, lineHeight: 1.6, fontFamily: 'inherit' }}
         />
         <div className="sub" style={{ marginTop: 8, lineHeight: 1.7 }}>
-          ・日付の行（11/12）、人の行（Ryota,Katsura）は次の行から有効<br />
+          ・日付の行（11/12）、人の行（Taro,Hanako）は次の行から有効<br />
           ・「20kg 5rep 3set」「20kg×5×3」「20 5 3」どれでも可。カンマで重量違いを並べられます<br />
           ・「2db」の次の行はダンベル2個（重量は片手）<br />
           ・「19:30-20:45」の行でトレーニング時間も入ります<br />
